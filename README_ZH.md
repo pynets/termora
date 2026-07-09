@@ -22,6 +22,10 @@
 
 不再需要在各类分散的终端工具、数据库客户端、笔记软件和截屏小工具之间频繁切换，Termora 把日常开发最关键的工具流汇集到一个优雅得体的原生窗口中。
 
+## 📥 下载安装包 (Release v0.0.1)
+
+- **macOS 安装包 (.dmg)**: [下载 Termora-v0.0.1-macOS.dmg](./release/Termora-v0.0.1-macOS.dmg)
+
 ---
 
 ## 📸 应用预览 (Preview)

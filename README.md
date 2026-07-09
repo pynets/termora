@@ -20,6 +20,10 @@
 
 Instead of jumping between fragmented SSH clients, database tools, note-taking apps, and screenshot utilities, Termora brings everything together seamlessly.
 
+## 📥 Download Release (v0.0.1)
+
+- **macOS Installer (.dmg)**: [Download Termora-v0.0.1-macOS.dmg](./release/Termora-v0.0.1-macOS.dmg)
+
 ---
 
 ## 📸 Preview
