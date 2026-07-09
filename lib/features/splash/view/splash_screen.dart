@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'package:termora/app/shell/main_shell.dart';
 import 'package:termora/app/theme/app_theme.dart';
+import 'package:termora/core/services/update_service.dart';
 import 'package:termora/features/splash/controller/splash_controller.dart';
 
 /// 启动页 - 移植并适配自 superdesk
@@ -79,6 +80,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     await _handleResult(result);
   }
 
+  Future<void> _skipUpdate() async {
+    final result = ref.read(splashControllerProvider.notifier).skipUpdate();
+    await _handleResult(result);
+  }
+
+  Future<void> _performUpdate() async {
+    final result =
+        await ref.read(splashControllerProvider.notifier).performUpdate();
+    await _handleResult(result);
+  }
+
   Future<void> _handleResult(SplashResult? result) async {
     if (!mounted || result == null) return;
     switch (result) {
@@ -135,6 +147,80 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       await Future.delayed(const Duration(milliseconds: 400));
       await windowManager.setMinimumSize(const Size(800, 560));
     }
+  }
+
+  /// 发现新版本的升级卡片:版本号 + 体积,立即升级 / 稍后。
+  Widget _buildUpdateCard(UpdateInfo update) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              LucideIcons.circleArrowUp300,
+              size: 16,
+              color: AppTheme.brandColor,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              '发现新版本 ${update.tagName}',
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.headingColor,
+              ),
+            ),
+          ],
+        ),
+        if (update.sizeLabel.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            '安装包 ${update.sizeLabel} · 下载完成后自动安装并重启',
+            style: TextStyle(fontSize: 11.5, color: AppTheme.subtleTextColor),
+          ),
+        ],
+        const SizedBox(height: 18),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 34,
+              child: FilledButton(
+                onPressed: () => _performUpdate(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.brandColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                child: const Text(
+                  '立即升级',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              height: 34,
+              child: TextButton(
+                onPressed: () => _skipUpdate(),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.subtleTextColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                child: const Text('稍后', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   @override
@@ -294,6 +380,35 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                     ),
                                   ),
                                 ),
+                              ] else if (splashState.updateProgress !=
+                                  null) ...[
+                                // 升级包下载中:确定进度条 + 百分比
+                                SizedBox(
+                                  width: 200,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(2),
+                                    child: LinearProgressIndicator(
+                                      value: splashState.updateProgress,
+                                      minHeight: 4,
+                                      backgroundColor:
+                                          AppTheme.subtleSurfaceColor,
+                                      valueColor:
+                                          AlwaysStoppedAnimation<Color>(
+                                        AppTheme.brandColor,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Text(
+                                  splashState.statusText,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: AppTheme.bodyColor,
+                                  ),
+                                ),
+                              ] else if (splashState.update != null) ...[
+                                _buildUpdateCard(splashState.update!),
                               ] else if (!_isTransitioning) ...[
                                 SizedBox(
                                   width: 20,

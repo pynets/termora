@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
+import 'package:termora/core/app_version.dart';
 import 'package:termora/features/settings/controller/setting_providers.dart';
 
 /// 打开设置弹窗
@@ -197,7 +198,7 @@ class SettingsDialog extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            'v0.0.2+2',
+                            'v$kAppVersion+$kAppBuild',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,

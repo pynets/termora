@@ -76,15 +76,27 @@ else
 fi
 echo -e "  ✔ 已更新 pubspec.yaml 版本为 ${FULL_VERSION}"
 
-# 修改 settings_dialog.dart 里的关于面板版本显示
-SETTINGS_FILE="lib/features/settings/view/settings_dialog.dart"
-if [ -f "$SETTINGS_FILE" ]; then
+# 修改 lib/core/app_version.dart —— 应用内版本单一来源
+# (设置页「关于」徽标与启动页 GitHub Release 升级检测都读这里;
+#  这里必须与 pubspec 同步,否则新版装上后还会提示自己升级)
+VERSION_FILE="lib/core/app_version.dart"
+if [ -f "$VERSION_FILE" ]; then
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s/'v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[+0-9]*'/'v${FULL_VERSION}'/g" "$SETTINGS_FILE"
+    sed -i '' "s/^const String kAppVersion = .*/const String kAppVersion = '${NEW_VERSION}';/" "$VERSION_FILE"
+    sed -i '' "s/^const String kAppBuild = .*/const String kAppBuild = '${BUILD_NUMBER}';/" "$VERSION_FILE"
   else
-    sed -i "s/'v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[+0-9]*'/'v${FULL_VERSION}'/g" "$SETTINGS_FILE"
+    sed -i "s/^const String kAppVersion = .*/const String kAppVersion = '${NEW_VERSION}';/" "$VERSION_FILE"
+    sed -i "s/^const String kAppBuild = .*/const String kAppBuild = '${BUILD_NUMBER}';/" "$VERSION_FILE"
   fi
-  echo -e "  ✔ 已同步更新 SettingsDialog 关于卡片版本为 v${FULL_VERSION}"
+  # 校验:替换必须真的生效,防止 sed 失配悄悄发出旧版本号的包
+  if ! grep -q "kAppVersion = '${NEW_VERSION}'" "$VERSION_FILE"; then
+    echo -e "${RED}  ✘ ${VERSION_FILE} 版本号更新失败,请检查文件格式!${NC}"
+    exit 1
+  fi
+  echo -e "  ✔ 已更新 ${VERSION_FILE} 为 ${NEW_VERSION}+${BUILD_NUMBER}(升级检测/关于页数据源)"
+else
+  echo -e "${RED}  ✘ 未找到 ${VERSION_FILE}(升级检测依赖它),中止发布!${NC}"
+  exit 1
 fi
 
 # 修改 README.md 下载链接与标题版本
@@ -143,7 +155,7 @@ echo -e "\n${CYAN}[5/6] 创建 GitHub Release 并上传安装包...${NC}"
 # 优先探测是否安装 gh cli
 if command -v gh &> /dev/null; then
   echo -e "  👉 使用 GitHub CLI (gh) 创建 Release..."
-  RELEASE_NOTES="### 🚀 Termora ${TAG_NAME} Release\n\n#### 📥 下载与安装\n- **macOS 安装包**: 下载下方 \`${DMG_NAME}\`\n- 打开后将 **Termora.app** 拖入 \`/Applications\` 文件夹即可。"
+  RELEASE_NOTES="### 🚀 Termora ${TAG_NAME} Release\n\n#### 📥 下载与安装\n- **macOS 安装包**: 下载下方 \`${DMG_NAME}\`\n- 打开后将 **Termora.app** 拖入 \`/Applications\` 文件夹即可。\n- 已安装旧版本的用户:启动 Termora 会自动检测到本次更新,点「立即升级」即可原地升级并重启。"
   gh release create "${TAG_NAME}" "${DMG_OUTPUT}" --title "Termora ${TAG_NAME} Release" --notes "${RELEASE_NOTES}" --target main
   echo -e "${GREEN}  ✔ 通过 gh cli 发布成功！${NC}"
 else
@@ -165,7 +177,7 @@ else
       -H "Authorization: Bearer ${GH_TOKEN}" \
       -H "X-GitHub-Api-Version: 2022-11-28" \
       "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases" \
-      -d "{\"tag_name\":\"${TAG_NAME}\",\"target_commitish\":\"main\",\"name\":\"Termora ${TAG_NAME} Release\",\"body\":\"### 🚀 Termora ${TAG_NAME} Release\\n\\n#### 📥 下载与安装 (macOS)\\n下载下面的 \`${DMG_NAME}\` 并打开，拖入 Applications 文件夹即可安装。\"}")
+      -d "{\"tag_name\":\"${TAG_NAME}\",\"target_commitish\":\"main\",\"name\":\"Termora ${TAG_NAME} Release\",\"body\":\"### 🚀 Termora ${TAG_NAME} Release\\n\\n#### 📥 下载与安装 (macOS)\\n下载下面的 \`${DMG_NAME}\` 并打开，拖入 Applications 文件夹即可安装。\\n已安装旧版本的用户：启动 Termora 会自动检测到本次更新，点「立即升级」即可原地升级并重启。\"}")
 
     RELEASE_ID=$(echo "$CREATE_RESP" | grep -m 1 '"id":' | sed 's/[^0-9]//g')
     if [ -n "$RELEASE_ID" ]; then
