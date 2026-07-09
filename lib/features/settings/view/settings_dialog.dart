@@ -70,37 +70,26 @@ class SettingsDialog extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<AppLocale>(
-                  segments: [
-                    ButtonSegment(
-                      value: AppLocale.system,
-                      label: Text(l10n.followSystem),
-                      icon: const Icon(LucideIcons.languages, size: 14),
-                    ),
-                    ButtonSegment(
-                      value: AppLocale.zh,
-                      label: Text(l10n.chinese),
-                    ),
-                    ButtonSegment(
-                      value: AppLocale.en,
-                      label: Text(l10n.english),
-                    ),
-                  ],
-                  selected: {locale},
-                  onSelectionChanged: (selection) {
-                    ref
-                        .read(appLocaleControllerProvider.notifier)
-                        .setLocale(selection.first);
-                  },
-                  style: ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    textStyle: const WidgetStatePropertyAll(
-                      TextStyle(fontSize: 12.5),
-                    ),
+              _ModernSegmentedBar<AppLocale>(
+                selected: locale,
+                onChanged: (value) => ref
+                    .read(appLocaleControllerProvider.notifier)
+                    .setLocale(value),
+                items: [
+                  _SegmentItem(
+                    value: AppLocale.system,
+                    label: l10n.followSystem,
+                    icon: LucideIcons.languages,
                   ),
-                ),
+                  _SegmentItem(
+                    value: AppLocale.zh,
+                    label: l10n.chinese,
+                  ),
+                  _SegmentItem(
+                    value: AppLocale.en,
+                    label: l10n.english,
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
 
@@ -114,39 +103,28 @@ class SettingsDialog extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<ThemeMode>(
-                  segments: [
-                    ButtonSegment(
-                      value: ThemeMode.system,
-                      label: Text(l10n.followSystem),
-                      icon: const Icon(LucideIcons.monitor, size: 14),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.light,
-                      label: Text(l10n.lightTheme),
-                      icon: const Icon(LucideIcons.sun, size: 14),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.dark,
-                      label: Text(l10n.darkTheme),
-                      icon: const Icon(LucideIcons.moon, size: 14),
-                    ),
-                  ],
-                  selected: {themeMode},
-                  onSelectionChanged: (selection) {
-                    ref
-                        .read(appThemeControllerProvider.notifier)
-                        .setThemeMode(selection.first);
-                  },
-                  style: ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    textStyle: const WidgetStatePropertyAll(
-                      TextStyle(fontSize: 12.5),
-                    ),
+              _ModernSegmentedBar<ThemeMode>(
+                selected: themeMode,
+                onChanged: (value) => ref
+                    .read(appThemeControllerProvider.notifier)
+                    .setThemeMode(value),
+                items: [
+                  _SegmentItem(
+                    value: ThemeMode.system,
+                    label: l10n.followSystem,
+                    icon: LucideIcons.monitor,
                   ),
-                ),
+                  _SegmentItem(
+                    value: ThemeMode.light,
+                    label: l10n.lightTheme,
+                    icon: LucideIcons.sun,
+                  ),
+                  _SegmentItem(
+                    value: ThemeMode.dark,
+                    label: l10n.darkTheme,
+                    icon: LucideIcons.moon,
+                  ),
+                ],
               ),
               const SizedBox(height: 20),
 
@@ -335,3 +313,142 @@ class _BrandColorSwatch extends StatelessWidget {
     );
   }
 }
+
+class _SegmentItem<T> {
+  const _SegmentItem({
+    required this.value,
+    required this.label,
+    this.icon,
+  });
+
+  final T value;
+  final String label;
+  final IconData? icon;
+}
+
+class _ModernSegmentedBar<T> extends StatelessWidget {
+  const _ModernSegmentedBar({
+    required this.items,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<_SegmentItem<T>> items;
+  final T selected;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : const Color(0xFFEEEEF0),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : const Color(0xFFE2E2E6),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        children: items.map((item) {
+          final isSelected = item.value == selected;
+          return Expanded(
+            child: _ModernSegmentButton<T>(
+              item: item,
+              isSelected: isSelected,
+              isDark: isDark,
+              onTap: () => onChanged(item.value),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _ModernSegmentButton<T> extends StatelessWidget {
+  const _ModernSegmentButton({
+    required this.item,
+    required this.isSelected,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final _SegmentItem<T> item;
+  final bool isSelected;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 7.5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (isDark ? const Color(0xFF38383A) : Colors.white)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(7.5),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.07),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1.5),
+                  )
+                ]
+              : null,
+          border: isSelected
+              ? Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : Colors.black.withValues(alpha: 0.04),
+                  width: 0.5,
+                )
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (item.icon != null) ...[
+              Icon(
+                item.icon,
+                size: 14,
+                color: isSelected
+                    ? AppTheme.brandColor
+                    : AppTheme.subtleTextColor,
+              ),
+              const SizedBox(width: 6),
+            ],
+            Flexible(
+              child: Text(
+                item.label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  color: isSelected
+                      ? AppTheme.headingColor
+                      : AppTheme.bodyColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
