@@ -1,0 +1,85 @@
+name: termora
+description: "Termora — 终端 / 数据库连接 桌面工具箱"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 状态管理
+  flutter_riverpod: ^3.3.1
+  riverpod_annotation: ^4.0.2
+
+  # 本地存储
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+  # 文件选择
+  file_picker: ^11.0.2
+
+  # 系统级拖放(Finder 拖文件进窗口)
+  desktop_drop: ^0.6.1
+
+  # 拖出到 Finder(虚拟文件承诺,下载远端文件到落点)
+  super_drag_and_drop: ^0.9.1
+  super_clipboard: ^0.9.1
+
+  # 图标
+  lucide_icons_flutter: ^3.1.13
+
+  # 系统托盘 / 窗口 / 通知
+  tray_manager: ^0.5.2
+  window_manager: ^0.5.1
+  flutter_local_notifications: ^21.0.0
+
+  # 全局快捷键
+  hotkey_manager: ^0.2.3
+
+  # 开机自启动
+  launch_at_startup: ^0.5.1
+
+  # 多窗口(截屏编辑器/贴图浮窗)
+  desktop_multi_window: ^0.3.0
+
+  # 截屏工具
+  screen_capturer: ^0.2.3
+
+  # 图片处理
+  image: ^4.8.0
+
+  # Toast 通知
+  toastification: ^3.2.0
+  postgres: ^3.5.12
+  # SQLite 本地库文件(macOS 直接用系统 libsqlite3)
+  sqlite3: ^3.3.3
+  re_editor: ^0.9.0
+  re_highlight: ^0.0.3
+  http: ^1.6.0
+
+  # LaTeX 公式排版(笔记 markdown 预览 $$ 块)
+  flutter_math_fork: ^0.7.4
+
+  # 笔记导出 PDF
+  pdf: ^3.12.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+  # 代码生成
+  build_runner: ^2.4.15
+  riverpod_generator: ^4.0.0+1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/icons/
