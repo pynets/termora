@@ -28,9 +28,9 @@
 
 | 🖥️ 终端控制台 (Terminal) | 🌐 远程主机与 SFTP (Remote) |
 | :---: | :---: |
-| <img src="./docs/screenshots/terminal.png" width="100%" alt="终端"/> | <img src="./docs/screenshots/remote.png" width="100%" alt="远程"/> |
+| ![终端](docs/screenshots/terminal.png) | ![远程](docs/screenshots/remote.png) |
 | **🗄️ 数据库客户端 (Database)** | **📝 全能笔记与 LaTeX (Notes)** |
-| <img src="./docs/screenshots/database.png" width="100%" alt="数据库"/> | <img src="./docs/screenshots/notes.png" width="100%" alt="笔记"/> |
+| ![数据库](docs/screenshots/database.png) | ![笔记](docs/screenshots/notes.png) |
 
 ---
 

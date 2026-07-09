@@ -26,9 +26,9 @@ Instead of jumping between fragmented SSH clients, database tools, note-taking a
 
 | 🖥️ Terminal | 🌐 Remote & SFTP |
 | :---: | :---: |
-| <img src="./docs/screenshots/terminal.png" width="100%" alt="Terminal"/> | <img src="./docs/screenshots/remote.png" width="100%" alt="Remote"/> |
+| ![Terminal](docs/screenshots/terminal.png) | ![Remote](docs/screenshots/remote.png) |
 | **🗄️ Database Explorer** | **📝 Markdown & LaTeX Notes** |
-| <img src="./docs/screenshots/database.png" width="100%" alt="Database"/> | <img src="./docs/screenshots/notes.png" width="100%" alt="Notes"/> |
+| ![Database](docs/screenshots/database.png) | ![Notes](docs/screenshots/notes.png) |
 
 ---
 
