@@ -151,12 +151,26 @@ class HighlightStore {
     await _save();
   }
 
+  /// 「无命中」缓存:itemBuilder 每帧对每条可见行调 apply,历史行文本
+  /// 不再变化,绝大多数也不命中任何规则 —— 记住 (行, 文本, 规则版本) 的
+  /// 无命中结论,下次同文本同规则直接跳过正则。Expando 按行身份弱引用,
+  /// 行被裁剪回收后缓存自动消失;命中的行不缓存(数量少,且要跟随样式)。
+  static final Expando<_NoMatchStamp> _noMatchCache =
+      Expando<_NoMatchStamp>('highlightNoMatch');
+
   /// 把高亮规则应用到一行:命中的文本(整行或片段)前景色被覆盖。
   /// 无命中时原样返回同一个对象(零拷贝,渲染热路径友好)。
   static TerminalLine apply(TerminalLine line, List<HighlightRule> rules) {
     if (rules.isEmpty || line.spans.isEmpty) return line;
     final text = line.text;
     if (text.isEmpty) return line;
+
+    final cached = _noMatchCache[line];
+    if (cached != null &&
+        identical(cached.rules, rules) &&
+        cached.text == text) {
+      return line;
+    }
 
     // 收集需要覆盖的 [起, 止) 区间及其目标样式(后加入的规则覆盖先加入的)。
     final overrides = <_Override>[];
@@ -178,7 +192,10 @@ class HighlightStore {
         overrides.add(_Override(0, text.length, rule.color, rule.bold));
       }
     }
-    if (overrides.isEmpty) return line;
+    if (overrides.isEmpty) {
+      _noMatchCache[line] = _NoMatchStamp(text, rules);
+      return line;
+    }
 
     // 整行规则命中时,直接给所有 span 上色(最常见,走快路)。
     if (wholeLineRule) {
@@ -239,4 +256,11 @@ class _Override {
   final int end;
   final Color color;
   final bool bold;
+}
+
+/// 无命中缓存的印章:文本 + 规则列表身份(规则列表变更时整体替换)。
+class _NoMatchStamp {
+  const _NoMatchStamp(this.text, this.rules);
+  final String text;
+  final List<HighlightRule> rules;
 }

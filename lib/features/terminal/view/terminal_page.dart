@@ -4004,6 +4004,52 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   }
 
   /// 命令块范围 [起, 止):从提示符行到下一个提示符行(不含)。
+  // ── 输出折叠(OSC 133 命令块)──
+  // 以提示符行对象的身份记折叠态(行号会随追加/裁剪漂移,对象不动);
+  // 被裁剪的行在下次计算时顺带从集合剔除,不泄漏。
+  final Set<TerminalLine> _foldedPrompts = Set<TerminalLine>.identity();
+
+  /// 每行是否被折叠隐藏;没有任何折叠时返回 null(零开销路径)。
+  List<bool>? _computeFoldedHidden() {
+    if (_foldedPrompts.isEmpty || _isAltBufferActive) return null;
+    final hidden = List<bool>.filled(_lines.length, false);
+    final alive = <TerminalLine>{};
+    var folding = false;
+    for (var i = 0; i < _lines.length; i++) {
+      final line = _lines[i];
+      if (line.isPromptStart) {
+        folding = _foldedPrompts.contains(line);
+        if (folding) alive.add(line);
+        continue; // 提示符行本身永远可见
+      }
+      if (folding) hidden[i] = true;
+    }
+    if (alive.length != _foldedPrompts.length) {
+      _foldedPrompts
+        ..clear()
+        ..addAll(alive);
+      if (_foldedPrompts.isEmpty) return null;
+    }
+    return hidden;
+  }
+
+  /// 该命令块被折叠隐藏的行数(供占位条显示)。
+  int _foldedLineCount(int promptLine) {
+    final range = _commandBlockRange(promptLine);
+    return math.max(0, range.end - range.start - 1);
+  }
+
+  void _toggleFold(int promptLine) {
+    final line = _lines[promptLine];
+    if (!line.isPromptStart) return;
+    setState(() {
+      if (!_foldedPrompts.remove(line)) {
+        _foldedPrompts.add(line);
+      }
+    });
+    _notifyTerminalOutputChanged();
+  }
+
   ({int start, int end}) _commandBlockRange(int promptLine) {
     var end = _lines.length;
     for (var i = promptLine + 1; i < _lines.length; i++) {
@@ -4060,20 +4106,35 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         globalPos & Size.zero,
         Offset.zero & overlay.size,
       ),
-      items: const [
-        PopupMenuItem(
+      items: [
+        const PopupMenuItem(
           value: 'output',
           height: 38,
           child: Text('复制命令输出', style: TextStyle(fontSize: 12.5)),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'both',
           height: 38,
           child: Text('复制命令 + 输出', style: TextStyle(fontSize: 12.5)),
         ),
+        if (_foldedLineCount(promptLine) > 0)
+          PopupMenuItem(
+            value: 'fold',
+            height: 38,
+            child: Text(
+              _foldedPrompts.contains(_lines[promptLine])
+                  ? '展开输出'
+                  : '折叠输出(${_foldedLineCount(promptLine)} 行)',
+              style: const TextStyle(fontSize: 12.5),
+            ),
+          ),
       ],
     );
     if (chosen == null) return;
+    if (chosen == 'fold') {
+      _toggleFold(promptLine);
+      return;
+    }
     await _copyCommandOutput(promptLine, includeCommand: chosen == 'both');
   }
 
@@ -5663,6 +5724,9 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     TextStyle monoStyle,
     _TerminalCellMetrics metrics,
   ) {
+    // 输出折叠(OSC 133 命令块):一次线性扫描算出每行是否被折叠隐藏,
+    // itemBuilder 里 O(1) 查。顺带把已被裁剪掉的行从折叠集里清理。
+    final folded = _computeFoldedHidden();
     return CustomScrollView(
       controller: _scrollController,
       physics: const ClampingScrollPhysics(),
@@ -5673,6 +5737,9 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
             itemCount: _lines.length,
             itemBuilder: (context, index) {
               final rawLine = _lines[index];
+              if (folded != null && folded[index]) {
+                return const SizedBox.shrink();
+              }
               // 内联图片行(Sixel / iTerm2):渲染图片,不走文本路径
               if (rawLine.image != null) {
                 return _wrapTerminalMouseLine(
@@ -5745,16 +5812,26 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   proportional: !_isAltBufferActive && !_isNativePtyActive,
                 ),
               );
-              // 提示符行(Shell 集成)右键 → 复制该命令输出
-              final wrapped = rawLine.isPromptStart
-                  ? GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onSecondaryTapUp: (d) => unawaited(
-                        _showCommandMenu(index, d.globalPosition),
-                      ),
-                      child: lineWidget,
-                    )
-                  : lineWidget;
+              // 提示符行(Shell 集成):右键菜单;折叠时在其下方挂占位条
+              Widget wrapped = lineWidget;
+              if (rawLine.isPromptStart) {
+                final isFolded = _foldedPrompts.contains(rawLine);
+                wrapped = GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onSecondaryTapUp: (d) =>
+                      unawaited(_showCommandMenu(index, d.globalPosition)),
+                  child: isFolded
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            lineWidget,
+                            _buildFoldPlaceholder(index),
+                          ],
+                        )
+                      : lineWidget,
+                );
+              }
               return _wrapTerminalMouseLine(
                 rowIndex: index,
                 metrics: metrics,
@@ -6067,6 +6144,46 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
           ),
         );
       },
+    );
+  }
+
+  /// 折叠命令块的占位条:显示折叠行数,点击展开。
+  Widget _buildFoldPlaceholder(int promptLine) {
+    final count = _foldedLineCount(promptLine);
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, top: 2, bottom: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => _toggleFold(promptLine),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: AppTheme.subtleSurfaceColor.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: AppTheme.borderColor.withValues(alpha: 0.7),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                LucideIcons.chevronsUpDown300,
+                size: 11,
+                color: AppTheme.subtleTextColor,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '已折叠 $count 行输出 — 点击展开',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: AppTheme.subtleTextColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

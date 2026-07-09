@@ -97,6 +97,22 @@ void main() {
           _red);
     });
 
+    test('无命中缓存:同行同文本跳过重扫,文本变化后重新命中', () {
+      final line = _line([TerminalSpan('all good', const AnsiStyle())]);
+      final rules = [
+        const HighlightRule(id: 'c', name: 'e', pattern: 'ERROR', color: _red),
+      ];
+      // 第一次无命中(写入缓存),第二次走缓存,都返回原对象
+      expect(identical(HighlightStore.apply(line, rules), line), isTrue);
+      expect(identical(HighlightStore.apply(line, rules), line), isTrue);
+      // 行文本变化(模拟活动行被改写)→ 缓存失效,重新命中
+      line.spans
+        ..clear()
+        ..add(const TerminalSpan('an ERROR here', AnsiStyle()));
+      final out = HighlightStore.apply(line, rules);
+      expect(out.spans.first.style.foreground, _red);
+    });
+
     test('非法正则被安全忽略', () {
       final line = _line([TerminalSpan('a(b', const AnsiStyle())]);
       final rule = HighlightRule(
