@@ -197,7 +197,7 @@ class SettingsDialog extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            'v0.0.1+1',
+                            'v0.0.2+2',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,

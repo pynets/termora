@@ -171,7 +171,10 @@ CREATE TABLE no_pk (v TEXT);
 UPDATE users SET score = 99.5 WHERE id = 1;
 SELECT id, name FROM users WHERE name = 'user;1' OR id = 1;
 ''');
-    expect(ctx, isNull);
+    // 单表 SELECT 且结果覆盖主键 → 推断出可编辑上下文(结果网格可改)
+    expect(ctx, isNotNull);
+    expect(ctx!.table, 'users');
+    expect(ctx.editable, isTrue);
     expect(output.columns, ['id', 'name']);
     expect(output.rows, [
       [1, 'user1'],

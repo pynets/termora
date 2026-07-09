@@ -1470,6 +1470,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   // ── SGR 5/6 闪烁时钟 ──
   // 首次出现闪烁内容前不启动时钟(零开销);之后 ~2Hz 切换相位重绘,
   // _textStyleForSpan 在相位为暗时把闪烁文字调淡,形成闪烁。
+  // 缓冲区里不再有闪烁内容时自动停钟(否则一条 \e[5m 之后每秒白白
+  // 重绘两次直到会话销毁),下次再写入闪烁内容会重新启动。
   Timer? _blinkTimer;
   bool _blinkPhaseOn = true;
   bool _anyBlinkSeen = false;
@@ -1482,10 +1484,36 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       const Duration(milliseconds: 530),
       (_) {
         if (!mounted) return;
+        if (!_bufferHasBlinkContent()) {
+          _blinkTimer?.cancel();
+          _blinkTimer = null;
+          _anyBlinkSeen = false;
+          // 相位归位为亮,避免残留半透明
+          if (!_blinkPhaseOn) {
+            _blinkPhaseOn = true;
+            _terminalOutputVersion.value++;
+          }
+          return;
+        }
         _blinkPhaseOn = !_blinkPhaseOn;
         _terminalOutputVersion.value++;
       },
     );
+  }
+
+  /// 当前缓冲区(含备用屏身后保存的普通缓冲区)是否还有闪烁文字。
+  /// 2Hz 调用、纯内存遍历,1200 行上限下开销可忽略。
+  bool _bufferHasBlinkContent() {
+    bool scan(List<TerminalLine> lines) {
+      for (final line in lines) {
+        for (final span in line.spans) {
+          if (span.style.blink && span.text.trim().isNotEmpty) return true;
+        }
+      }
+      return false;
+    }
+
+    return scan(_lines) || (_isAltBufferActive && scan(_normalLines));
   }
 
   Process? _process;
@@ -1782,6 +1810,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     TerminalThemeStore.current.removeListener(_onTerminalThemeChanged);
     _hideHistoryDropdown();
     _blinkTimer?.cancel();
+    _searchRefreshCooldown?.cancel();
     _outputFlushTimer?.cancel();
     _stdoutSubscription?.cancel();
     _stderrSubscription?.cancel();
@@ -1876,6 +1905,23 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     }
     if (command == 'exit') {
       _appendLine('当前内置终端会话已保留。使用“重置”可以开启新的视图。', TerminalLineType.system);
+      _restoreInputFocus();
+      return;
+    }
+    // history 是交互 shell 的内建命令,非交互 `zsh -c history` 会报
+    // 「fc: no such event」;这里直接内建:打印本会话自己的命令历史。
+    final historyLimit = _parseHistoryCommand(command);
+    if (historyLimit != null) {
+      final start = math.max(0, _history.length - historyLimit);
+      for (var i = start; i < _history.length; i++) {
+        _appendLine(
+          '${(i + 1).toString().padLeft(5)}  ${_history[i]}',
+          TerminalLineType.stdout,
+        );
+      }
+      if (_history.isEmpty) {
+        _appendLine('(还没有历史命令)', TerminalLineType.system);
+      }
       _restoreInputFocus();
       return;
     }
@@ -2555,6 +2601,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       return null;
     }
     return _stripMatchingQuotes(target);
+  }
+
+  /// `history` / `history N` → 要显示的条数;不是 history 命令返回 null。
+  int? _parseHistoryCommand(String command) {
+    if (command == 'history') return _history.length;
+    final match = RegExp(r'^history\s+(\d+)$').firstMatch(command);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!) ?? _history.length;
   }
 
   void _clearLines() {
@@ -3820,7 +3874,29 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     }
   }
 
+  // 输出驱动的搜索重扫节流:首次立即扫,150ms 冷却窗内的后续输出合并成
+  // 窗口到期后的一次补扫。搜索没开(query 空)时零开销。
+  Timer? _searchRefreshCooldown;
+  bool _searchRefreshDirty = false;
+
   @override
+  void _scheduleSearchRefresh() {
+    if (_searchQuery.trim().isEmpty) return;
+    if (_searchRefreshCooldown != null) {
+      _searchRefreshDirty = true;
+      return;
+    }
+    _refreshSearchMatches();
+    _searchRefreshCooldown = Timer(const Duration(milliseconds: 150), () {
+      _searchRefreshCooldown = null;
+      if (_searchRefreshDirty && mounted) {
+        _searchRefreshDirty = false;
+        _scheduleSearchRefresh();
+        _notifyTerminalOutputChanged();
+      }
+    });
+  }
+
   void _refreshSearchMatches() {
     final query = _searchQuery.trim();
     _searchError = false;
@@ -5524,9 +5600,20 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       builder: (context, constraints) {
         final metrics = _TerminalCellMetrics.fromStyle(monoStyle);
         _syncPtySizeForViewport(constraints, metrics);
-        return GestureDetector(
+        // 点击输出区任意处都把焦点还给命令输入。之前用 GestureDetector.onTap,
+        // 但 SelectionArea 在手势竞技场里赢走了 tap(选择手势),onTap 永远
+        // 不触发 —— 表现为「必须点到输入框旁边才有焦点」。Listener 不参与
+        // 竞技场,pointer-up 必达;拖拽选择结束时也会走到这里,拿焦点不清
+        // 选区,无副作用。
+        // 注:不加 _externalWidgetHasFocus 守卫 —— 那是防「自动回抢」用的;
+        // 用户主动点输出区就是要用终端,即便地址栏/搜索框正持焦点也应转移。
+        // 详情面板是 Stack 兄弟层且悬浮在上,它的点击不会冒泡到这里。
+        return Listener(
           behavior: HitTestBehavior.translucent,
-          onTap: () => _activeInputNode.requestFocus(),
+          onPointerUp: (_) {
+            if (!mounted) return;
+            _activeInputNode.requestFocus();
+          },
           child: SelectionArea(
             child: ValueListenableBuilder<int>(
               valueListenable: _terminalOutputVersion,

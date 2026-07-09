@@ -114,7 +114,8 @@ mixin _TerminalEmulator on State<_TerminalSessionView> {
   void _noteBlinkContent();
   void _notifyTerminalOutputChanged();
   void _publishUiState();
-  void _refreshSearchMatches();
+  /// 节流版搜索重扫(输出路径用):搜索关闭时零开销,开着时合并到冷却窗口
+  void _scheduleSearchRefresh();
   void _scrollToBottom();
   void _deferSynchronizedOutputRefresh();
   void _setSynchronizedOutputMode(bool enable);
@@ -129,7 +130,9 @@ mixin _TerminalEmulator on State<_TerminalSessionView> {
       _deferSynchronizedOutputRefresh();
       return;
     }
-    _refreshSearchMatches();
+    // 输出驱动的搜索重扫走节流版:洪峰时(每秒可达 ~125 次 flush)
+    // 每次全缓冲区跑正则太重;用户操作(改查询/切选项)仍走即时版
+    _scheduleSearchRefresh();
     _notifyTerminalOutputChanged();
     _scrollToBottom();
   }
@@ -142,7 +145,7 @@ mixin _TerminalEmulator on State<_TerminalSessionView> {
     _cursorY = _lines.length - 1;
     _cursorX = _lines.last.length;
     _trimLines();
-    _refreshSearchMatches();
+    _scheduleSearchRefresh();
     _notifyTerminalOutputChanged();
     _scrollToBottom();
   }
