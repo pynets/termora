@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:termora/features/notes/data/note_search_index.dart';
 import 'package:termora/features/notes/domain/note.dart';
 
 /// 笔记持久化 — 正文按 marktext 的文件形态落盘:
@@ -83,6 +85,12 @@ class NoteStore {
           ),
         );
       }
+      // 全文搜索索引:启动时全量重建一次,之后随保存增量同步
+      unawaited(
+        NoteSearchIndex.reindexAll({
+          for (final n in notes) n.id: n.content,
+        }).catchError((_) {}),
+      );
       return notes;
     } catch (_) {
       return [];
@@ -106,11 +114,12 @@ class NoteStore {
         ],
       }),
     );
-    // 正文:只写内容变化的文件
+    // 正文:只写内容变化的文件(同步更新全文搜索索引)
     for (final n in notes) {
       if (_written[n.id] != n.content) {
         _noteFile(dir, n.id).writeAsStringSync(n.content);
         _written[n.id] = n.content;
+        NoteSearchIndex.upsert(n.id, n.content);
       }
     }
     // 清理已删除笔记的文件
@@ -121,6 +130,7 @@ class NoteStore {
         if (!ids.contains(id)) {
           f.deleteSync();
           _written.remove(id);
+          NoteSearchIndex.remove(id);
         }
       }
     }

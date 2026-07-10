@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:termora/features/notes/data/note_search_index.dart';
 import 'package:termora/features/notes/data/note_store.dart';
 import 'package:termora/features/notes/domain/note.dart';
 
@@ -36,13 +37,22 @@ class NotesState {
   Notebook? get activeNotebook =>
       notebooks.where((n) => n.id == activeNotebookId).firstOrNull;
 
-  /// 笔记本过滤 + 搜索过滤 + 置顶优先、更新时间倒序
+  /// 笔记本过滤 + 搜索过滤 + 置顶优先、更新时间倒序。
+  /// 搜索优先走 SQLite FTS5(trigram 子串索引,与 contains 语义一致);
+  /// 索引不可用或查询过短时回落内存过滤。
   List<Note> get visibleNotes {
     final q = query.trim().toLowerCase();
+    final ftsHits = q.isEmpty ? null : NoteSearchIndex.trySearch(q);
+    bool matches(Note n) {
+      if (q.isEmpty) return true;
+      if (ftsHits != null) return ftsHits.contains(n.id);
+      return n.content.toLowerCase().contains(q);
+    }
+
     final list = [
       for (final n in notes)
         if ((activeNotebookId == null || n.notebookId == activeNotebookId) &&
-            (q.isEmpty || n.content.toLowerCase().contains(q)))
+            matches(n))
           n,
     ];
     list.sort((a, b) {

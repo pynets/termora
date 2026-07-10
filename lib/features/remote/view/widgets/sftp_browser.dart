@@ -10,6 +10,7 @@ import 'package:toastification/toastification.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/widgets/app_toast.dart';
+import 'package:termora/core/data/transfer_log_store.dart';
 import 'package:termora/core/widgets/slide_select.dart';
 import 'package:termora/core/utils/file_picker_helper.dart';
 import 'package:termora/features/remote/data/local_file_service.dart';
@@ -508,6 +509,61 @@ class _SftpBrowserState extends State<SftpBrowser> {
     _localSelect.addListener(_onSelectionChanged);
     unawaited(_openRemote());
     unawaited(_openLocal());
+    unawaited(_restoreTransferLog());
+  }
+
+  /// 恢复该主机最近的传输记录(SQLite):面板重开/应用重启后历史仍在。
+  /// 恢复出的记录不可取消/重试(进程已不在),仅作展示。
+  Future<void> _restoreTransferLog() async {
+    try {
+      final records = await TransferLogStore.recent(widget.host.id);
+      if (!mounted || records.isEmpty) return;
+      setState(() {
+        for (final r in records) {
+          final t = _Transfer(
+            label: r.label,
+            isUpload: r.isUpload,
+            remoteDir: '',
+            total: r.total,
+          )..state = switch (r.state) {
+              'done' => _TransferState.done,
+              'cancelled' => _TransferState.cancelled,
+              _ => _TransferState.failed,
+            }
+            ..error = r.error;
+          if (t.state == _TransferState.done && r.total != null) {
+            t.transferred = r.total!;
+          }
+          _transfers.add(t);
+        }
+      });
+    } catch (_) {
+      // 历史恢复失败不影响新传输
+    }
+  }
+
+  /// 传输到达终态后落盘(每主机保留最近 200 条)
+  void _logTransfer(_Transfer t) {
+    final state = switch (t.state) {
+      _TransferState.done => 'done',
+      _TransferState.cancelled => 'cancelled',
+      _TransferState.failed => 'failed',
+      _TransferState.running => 'running',
+    };
+    if (state == 'running') return;
+    unawaited(
+      TransferLogStore.add(
+        TransferRecord(
+          host: widget.host.id,
+          label: t.label,
+          isUpload: t.isUpload,
+          state: state,
+          error: t.error,
+          total: t.total,
+          finishedAt: DateTime.now(),
+        ),
+      ).catchError((_) {}),
+    );
   }
 
   void _onSelectionChanged() {
@@ -769,6 +825,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
           transfer.transferred = transfer.total!;
         }
       });
+      _logTransfer(transfer);
       // 完成后:上传方还停在目标远端目录、下载方还停在落地本地目录 → 刷新现身
       if (transfer.state == _TransferState.done) {
         if (transfer.isUpload && transfer.remoteDir == _remotePath) {
@@ -786,6 +843,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
       setState(() {
         transfer.state = _TransferState.failed;
         transfer.error = error.message;
+        _logTransfer(transfer);
         // 失败原因直接亮在状态栏,不用悬停传输行才看到;权限问题提示可提权
         _status = denied
             ? tr2('权限不足:{0}。点右上角盾牌图标提权后重试(sudo 或 su root)。', [transfer.label])

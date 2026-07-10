@@ -18,6 +18,7 @@ import 'package:super_drag_and_drop/super_drag_and_drop.dart' as sdd;
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/utils/file_picker_helper.dart';
 import 'package:termora/core/services/macos_file_access_service.dart';
+import 'package:termora/core/data/command_history_store.dart';
 import 'package:termora/core/widgets/glass_menu.dart';
 import 'package:termora/core/widgets/slide_select.dart';
 import 'package:termora/features/terminal/controller/terminal_engine.dart';
@@ -713,10 +714,9 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
   /// 会话被永久关闭后清掉它的专属命令历史,不留孤儿存储
   Future<void> _removeSessionHistory(String providerKey) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('$_legacyHistoryPreferenceKey.$providerKey');
+      await CommandHistoryStore.removeSession(providerKey);
     } catch (_) {
-      // 清理失败只是多占一条偏好记录,不影响使用
+      // 清理失败只是多占一条历史记录,不影响使用
     }
   }
 
@@ -1110,10 +1110,6 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
     );
   }
 }
-
-/// 命令历史存储 key 前缀;会话级 key = `$_legacyHistoryPreferenceKey.<providerKey>`,
-/// 无后缀的旧全局 key 只作首次迁移种子
-const _legacyHistoryPreferenceKey = 'workbench_terminal_history_v1';
 
 /// 输出区一行的命中标记(格子选择:hitTest 精确定位行,行高可变也不怕)
 class _TerminalRowTag {
@@ -1569,10 +1565,6 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   double _lastLineHeight = 16;
   bool _uiStatePublishQueued = false;
 
-  /// 每个会话各自的命令历史(↑/↓ 只翻当前终端敲过的命令)。
-  /// 旧版全局共享 key 保留作首次种子:老历史一次性继承进新会话,之后互不干扰。
-  String get _historyStorageKey =>
-      '$_legacyHistoryPreferenceKey.${widget.sessionId}';
   static const _maxHistoryEntries = 200;
   static const _nativePtyMethodChannel = MethodChannel(
     'com.hxlive.termora/terminal_pty',
@@ -4351,24 +4343,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
 
   Future<void> _loadHistory() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final stored =
-          prefs.getStringList(_historyStorageKey) ??
-          prefs.getStringList(_legacyHistoryPreferenceKey) ??
-          const [];
-      final normalized = stored
-          .map((entry) => entry.trim())
-          .where((entry) => entry.isNotEmpty)
-          .toList(growable: false);
+      // SQLite 存储(CommandHistoryStore 内部完成旧 prefs 的一次性迁移,
+      // 新会话无自身历史时回落旧全局种子,行为与迁移前一致)
+      final stored = await CommandHistoryStore.load(widget.sessionId);
       if (!mounted) return;
       setState(() {
         _history
           ..clear()
-          ..addAll(
-            normalized.length > _maxHistoryEntries
-                ? normalized.sublist(normalized.length - _maxHistoryEntries)
-                : normalized,
-          );
+          ..addAll(stored);
         _historyIndex = _history.length;
       });
     } catch (_) {
@@ -4407,17 +4389,9 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       _history.removeRange(0, _history.length - _maxHistoryEntries);
     }
     _historyIndex = _history.length;
-    unawaited(_saveHistory());
+    unawaited(CommandHistoryStore.record(widget.sessionId, command));
   }
 
-  Future<void> _saveHistory() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_historyStorageKey, _history);
-    } catch (_) {
-      // Ignore persistence errors; the command has already run.
-    }
-  }
 
   String _promptText() => '${_shortPath(_cwd)}\$';
 
