@@ -258,6 +258,10 @@ class _SlideSelectAreaState<K> extends State<SlideSelectArea<K>> {
   }
 
   void _handleUp(PointerUpEvent event) {
+    // 没跟踪的按压(右键/中键在 down 时已被忽略)不得进入单击分支 ——
+    // 否则右键抬起会命中「点空白 → 清空选择」,把多选清光后
+    // 右键菜单只剩光标行(批量删除退化成单删)。
+    if (_downGlobal == null) return;
     final controller = widget.controller;
     if (!_marquee && !_moved) {
       // 原地单击:行上 = 选中(⌘ 追加/移除),空白 = 清空

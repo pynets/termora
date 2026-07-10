@@ -105,6 +105,22 @@ void main() {
     expect(c.selected, {'item6', 'item7'});
   });
 
+  testWidgets('右键不清空已有多选(批量菜单依赖)', (tester) async {
+    final c = SlideSelectController<String>();
+    await tester.pumpWidget(_harness(c, items));
+    c.selectAll(['item1', 'item2', 'item3']);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('item2')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pump();
+
+    expect(c.selected, {'item1', 'item2', 'item3'});
+  });
+
   testWidgets('横向为主的拖动不触发多选', (tester) async {
     final c = SlideSelectController<String>();
     await tester.pumpWidget(_harness(c, items));
