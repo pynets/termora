@@ -10,6 +10,7 @@ import 'package:toastification/toastification.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/widgets/app_toast.dart';
+import 'package:termora/core/widgets/slide_select.dart';
 import 'package:termora/core/utils/file_picker_helper.dart';
 import 'package:termora/features/remote/data/local_file_service.dart';
 import 'package:termora/features/remote/data/sftp_service.dart';
@@ -144,6 +145,10 @@ class _SftpBrowserState extends State<SftpBrowser> {
   bool _statusIsError = false;
   final List<_Transfer> _transfers = [];
   final List<_EditSession> _edits = [];
+
+  /// 滑动多选(按住垂直滑动圈选;两栏各自独立,key = 条目名)
+  final _remoteSelect = SlideSelectController<String>();
+  final _localSelect = SlideSelectController<String>();
 
   /// Finder 拖拽正悬停在远端栏上(系统级拖放,区别于应用内跨栏拖拽)
   bool _osDropActive = false;
@@ -497,12 +502,21 @@ class _SftpBrowserState extends State<SftpBrowser> {
   @override
   void initState() {
     super.initState();
+    // 选择集变化(滑选扩展/toggle)只影响高亮与批量条,整树 setState 即可
+    _remoteSelect.addListener(_onSelectionChanged);
+    _localSelect.addListener(_onSelectionChanged);
     unawaited(_openRemote());
     unawaited(_openLocal());
   }
 
+  void _onSelectionChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _remoteSelect.dispose();
+    _localSelect.dispose();
     for (final t in _transfers) {
       t.poll?.cancel();
       // 传输进程不随面板关闭而中断,让它跑完
@@ -604,6 +618,13 @@ class _SftpBrowserState extends State<SftpBrowser> {
     try {
       final entries = await _remoteList(path);
       if (!mounted) return false;
+      // 换目录清空选择;同目录刷新只保留仍存在的条目
+      if (path != _remotePath) {
+        _remoteSelect.clear();
+      } else {
+        final names = {for (final e in entries) e.name};
+        _remoteSelect.retainWhere(names.contains);
+      }
       setState(() {
         _remotePath = path;
         _remoteEntries = entries;
@@ -661,6 +682,12 @@ class _SftpBrowserState extends State<SftpBrowser> {
       final entries = await LocalFileService.list(path);
       if (!mounted) return;
       FilePickerHelper.updateLastDirectoryFromPath(path);
+      if (path != _localPath) {
+        _localSelect.clear();
+      } else {
+        final names = {for (final e in entries) e.name};
+        _localSelect.retainWhere(names.contains);
+      }
       setState(() {
         _localPath = path;
         _localEntries = entries;
@@ -1566,6 +1593,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
             backgroundColor: Colors.transparent,
             color: AppTheme.brandColor,
           ),
+        if (_localSelect.hasSelection) _buildSelectionBar(isRemote: false),
         Expanded(child: _buildPaneBody(isRemote: false)),
       ],
     );
@@ -1582,9 +1610,134 @@ class _SftpBrowserState extends State<SftpBrowser> {
             backgroundColor: Colors.transparent,
             color: AppTheme.brandColor,
           ),
+        if (_remoteSelect.hasSelection) _buildSelectionBar(isRemote: true),
         Expanded(child: _buildPaneBody(isRemote: true)),
       ],
     );
+  }
+
+  // ── 滑动多选:批量操作 ──
+
+  /// 当前选中的条目(按列表顺序)
+  List<SftpEntry> _selectedEntries({required bool isRemote}) {
+    final select = isRemote ? _remoteSelect : _localSelect;
+    final visible = isRemote ? _visibleRemote : _visibleLocal;
+    return [
+      for (final e in visible)
+        if (select.contains(e.name)) e,
+    ];
+  }
+
+  Widget _buildSelectionBar({required bool isRemote}) {
+    final select = isRemote ? _remoteSelect : _localSelect;
+    final visible = isRemote ? _visibleRemote : _visibleLocal;
+    final count = select.selected.length;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.brandColor.withValues(alpha: 0.07),
+        border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Row(
+        children: [
+          Text(
+            '已选 $count 项',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.brandColor,
+            ),
+          ),
+          const Spacer(),
+          _headerAction(
+            '全选',
+            LucideIcons.copyCheck300,
+            count == visible.length
+                ? null
+                : () => select.selectAll([for (final e in visible) e.name]),
+          ),
+          _headerAction(
+            isRemote ? '下载到本地栏' : '上传到远端栏',
+            isRemote ? LucideIcons.download300 : LucideIcons.upload300,
+            () => _transferSelected(isRemote: isRemote),
+          ),
+          _headerAction(
+            '删除所选',
+            LucideIcons.trash300,
+            () => unawaited(_deleteSelected(isRemote: isRemote)),
+          ),
+          _headerAction('清除选择', LucideIcons.x300, select.clear),
+        ],
+      ),
+    );
+  }
+
+  /// 批量传输:所选条目逐个入传输队列(与单项拖拽同一底座,可取消/重试)
+  void _transferSelected({required bool isRemote}) {
+    final entries = _selectedEntries(isRemote: isRemote);
+    if (entries.isEmpty) return;
+    for (final entry in entries) {
+      if (isRemote) {
+        unawaited(
+          _downloadToLocal(entry, remoteDir: _remotePath, targetDir: _localPath),
+        );
+      } else {
+        unawaited(
+          _uploadFromLocal(entry, localDir: _localPath, targetDir: _remotePath),
+        );
+      }
+    }
+    (isRemote ? _remoteSelect : _localSelect).clear();
+  }
+
+  /// 批量删除:一次确认,逐项执行;中途失败停下并报错
+  Future<void> _deleteSelected({required bool isRemote}) async {
+    final entries = _selectedEntries(isRemote: isRemote);
+    if (entries.isEmpty) return;
+    final dirCount = entries.where((e) => e.isDir).length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('删除 ${entries.length} 项'),
+        content: Text(
+          [
+            '确定删除所选 ${entries.length} 项吗?',
+            if (dirCount > 0) '(含 $dirCount 个目录,仅能删除空目录)',
+            '\n${entries.take(8).map((e) => e.name).join('、')}'
+                '${entries.length > 8 ? ' 等…' : ''}',
+          ].join(''),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.errorColor),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    if (isRemote) {
+      await _runRemoteOp('删除 ${entries.length} 项…', () async {
+        for (final entry in entries) {
+          await _remoteRemove(_join(_remotePath, entry.name), entry.isDir);
+        }
+      });
+    } else {
+      await _runLocalOp('删除 ${entries.length} 项…', () async {
+        for (final entry in entries) {
+          final path = _join(_localPath, entry.name);
+          await (entry.isDir
+              ? LocalFileService.removeDir(path)
+              : LocalFileService.remove(path));
+        }
+      });
+    }
   }
 
   Widget _buildLocalHeader() {
@@ -1944,13 +2097,41 @@ class _SftpBrowserState extends State<SftpBrowser> {
       );
     }
     final dir = isRemote ? _remotePath : _localPath;
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: entries.length,
-      itemBuilder: (context, index) {
-        final entry = entries[index];
-        return _EntryRow(
+    final select = isRemote ? _remoteSelect : _localSelect;
+    return SlideSelectArea<String>(
+      controller: select,
+      items: () => [
+        for (final e in (isRemote ? _visibleRemote : _visibleLocal)) e.name,
+      ],
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: entries.length,
+        itemBuilder: (context, index) {
+          final entry = entries[index];
+          return SlideSelectItem<String>(
+            controller: select,
+            index: index,
+            child: _buildEntryRow(
+              entry: entry,
+              isRemote: isRemote,
+              dir: dir,
+              selected: select.contains(entry.name),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEntryRow({
+    required SftpEntry entry,
+    required bool isRemote,
+    required String dir,
+    required bool selected,
+  }) {
+    return _EntryRow(
           entry: entry,
+          selected: selected,
           payload: _DragPayload(fromRemote: isRemote, entry: entry, dir: dir),
           onOpen: entry.isDir
               ? () => isRemote
@@ -1993,8 +2174,6 @@ class _SftpBrowserState extends State<SftpBrowser> {
                   }
                 }
               : null,
-        );
-      },
     );
   }
 
@@ -2176,6 +2355,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
 class _EntryRow extends StatefulWidget {
   const _EntryRow({
     required this.entry,
+    this.selected = false,
     required this.payload,
     required this.onOpen,
     required this.transferTooltip,
@@ -2188,6 +2368,9 @@ class _EntryRow extends StatefulWidget {
   });
 
   final SftpEntry entry;
+
+  /// 滑动多选的选中态(高亮 + 左侧品牌色竖条)
+  final bool selected;
   final _DragPayload payload;
   final VoidCallback? onOpen;
   final String transferTooltip;
@@ -2224,6 +2407,8 @@ class _EntryRowState extends State<_EntryRow> {
     final row = _buildRow(dropActive: dropActive);
     return Draggable<_DragPayload>(
       data: widget.payload,
+      // 只认水平拖动:垂直方向留给列表的滑动多选(SlideSelectArea)
+      affinity: Axis.horizontal,
       dragAnchorStrategy: pointerDragAnchorStrategy,
       feedback: _buildDragFeedback(),
       childWhenDragging: Opacity(opacity: 0.45, child: row),
@@ -2247,14 +2432,26 @@ class _EntryRowState extends State<_EntryRow> {
         child: Material(
           color: dropActive
               ? AppTheme.brandColor.withValues(alpha: 0.12)
+              : widget.selected
+              ? AppTheme.brandColor.withValues(alpha: 0.10)
               : _hovered
               ? AppTheme.subtleSurfaceColor.withValues(alpha: 0.6)
               : Colors.transparent,
           child: InkWell(
             onDoubleTap: widget.onOpen,
             onTap: () {},
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(
+                    width: 2,
+                    color: widget.selected
+                        ? AppTheme.brandColor
+                        : Colors.transparent,
+                  ),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               child: Row(
                 children: [
                   Icon(

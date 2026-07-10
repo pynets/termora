@@ -17,6 +17,7 @@ import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/utils/file_picker_helper.dart';
 import 'package:termora/core/services/macos_file_access_service.dart';
 import 'package:termora/core/widgets/glass_menu.dart';
+import 'package:termora/core/widgets/slide_select.dart';
 import 'package:termora/features/terminal/controller/terminal_engine.dart';
 import 'package:termora/features/terminal/controller/terminal_image.dart';
 import 'package:termora/features/terminal/controller/terminal_model.dart';

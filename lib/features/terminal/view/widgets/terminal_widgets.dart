@@ -1418,6 +1418,9 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
   final TextEditingController _findController = TextEditingController();
   final List<_FileNode> _nodes = [];
   final List<_PanelTransfer> _transfers = [];
+
+  /// 滑动多选(按住垂直滑动圈选;key = 绝对路径,换目录后 retain 自动清空)
+  final _select = SlideSelectController<String>();
   String _query = '';
   bool _showHidden = false;
   bool _loading = false;
@@ -1442,7 +1445,12 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
   @override
   void initState() {
     super.initState();
+    _select.addListener(_onSelectionChanged);
     _loadRoot();
+  }
+
+  void _onSelectionChanged() {
+    if (mounted) setState(() {});
   }
 
   /// 切换到某个目录作为新的根(地址栏回车 / 上一级)
@@ -1498,6 +1506,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
 
   @override
   void dispose() {
+    _select.dispose();
     _findController.dispose();
     for (final t in _transfers) {
       t.sub?.cancel();
@@ -1906,6 +1915,9 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     try {
       final children = await _listDir(_currentRoot);
       if (!mounted) return;
+      // key 是绝对路径:同目录刷新保留仍存在的选择,换目录自然清空
+      final paths = {for (final n in children) n.path};
+      _select.retainWhere(paths.contains);
       setState(() {
         _nodes
           ..clear()
@@ -1986,6 +1998,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         if (_isRemote) _buildPathBar(),
         _buildFindBar(),
         Divider(height: 1, thickness: 1, color: AppTheme.borderColor),
+        if (_select.hasSelection) _buildSelectionBar(),
         Expanded(child: _buildBody()),
         if (_transfers.isNotEmpty) _buildTransfersFooter(),
       ],
@@ -2420,16 +2433,25 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         _query.isEmpty ? '空目录' : '无匹配项',
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: visible.length,
-      itemBuilder: (context, index) => _buildNodeRow(visible[index]),
+    return SlideSelectArea<String>(
+      controller: _select,
+      items: () => [for (final n in _visible) n.path],
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: visible.length,
+        itemBuilder: (context, index) => SlideSelectItem<String>(
+          controller: _select,
+          index: index,
+          child: _buildNodeRow(visible[index]),
+        ),
+      ),
     );
   }
 
   Widget _buildNodeRow(_FileNode node) {
     return _PanelFileRow(
       node: node,
+      selected: _select.contains(node.path),
       onOpen: () => _onOpen(node),
       onDownload: widget.remoteDownloader == null
           ? null
@@ -2439,8 +2461,159 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       onContextMenu: _isRemote ? (pos) => _showRowMenu(pos, node) : null,
       dragItemProvider: widget.remoteDownloader == null || node.isDir
           ? null
-          : () => _dragItemFor(node),
+          : () async {
+              // 正在垂直滑选时不启动"拖出到 Finder"的系统拖拽
+              if (_select.verticalIntent) return null;
+              return _dragItemFor(node);
+            },
     );
+  }
+
+  // ── 滑动多选:批量操作 ──
+
+  List<_FileNode> get _selectedNodes => [
+    for (final n in _visible)
+      if (_select.contains(n.path)) n,
+  ];
+
+  Widget _buildSelectionBar() {
+    final visible = _visible;
+    final count = _select.selected.length;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.brandColor.withValues(alpha: 0.07),
+        border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Row(
+        children: [
+          const SizedBox(width: 4),
+          Text(
+            '已选 $count 项',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.brandColor,
+            ),
+          ),
+          const Spacer(),
+          _selectionAction(
+            '全选',
+            LucideIcons.copyCheck300,
+            count == visible.length
+                ? null
+                : () => _select.selectAll([for (final n in visible) n.path]),
+          ),
+          _selectionAction(
+            '插入路径到命令行',
+            LucideIcons.terminal300,
+            () {
+              for (final node in _selectedNodes) {
+                widget.onInsertPath(node.path);
+              }
+              _select.clear();
+            },
+          ),
+          if (widget.remoteDownloader != null)
+            _selectionAction(
+              '下载所选…',
+              LucideIcons.download300,
+              () => unawaited(_downloadSelected()),
+            ),
+          if (widget.remoteDelete != null)
+            _selectionAction(
+              '删除所选',
+              LucideIcons.trash300,
+              () => unawaited(_deleteSelected()),
+            ),
+          _selectionAction('清除选择', LucideIcons.x300, _select.clear),
+        ],
+      ),
+    );
+  }
+
+  Widget _selectionAction(String tooltip, IconData icon, VoidCallback? onTap) {
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: IconButton(
+        tooltip: tooltip,
+        padding: EdgeInsets.zero,
+        splashRadius: 12,
+        icon: Icon(
+          icon,
+          size: 13,
+          color: onTap == null
+              ? AppTheme.subtleTextColor.withValues(alpha: 0.4)
+              : AppTheme.subtleTextColor,
+        ),
+        onPressed: onTap,
+      ),
+    );
+  }
+
+  /// 批量下载:选一次本地目录,所选条目逐个入传输队列
+  Future<void> _downloadSelected() async {
+    final downloader = widget.remoteDownloader;
+    if (downloader == null) return;
+    final nodes = _selectedNodes;
+    if (nodes.isEmpty) return;
+    final targetDir = await FilePicker.getDirectoryPath(
+      dialogTitle: '下载 ${nodes.length} 项到…',
+      initialDirectory: await FilePickerHelper.getInitialDirectory(),
+    );
+    if (targetDir == null || targetDir.isEmpty || !mounted) return;
+    FilePickerHelper.updateLastDirectoryFromPath(targetDir);
+    for (final node in nodes) {
+      _startTransfer(
+        _PanelTransfer(
+          label: node.isDir ? '${node.name}/' : node.name,
+          isUpload: false,
+        ),
+        downloader(node.path, '$targetDir/${node.name}', node.isDir),
+      );
+    }
+    _select.clear();
+  }
+
+  /// 批量删除:一次确认逐项执行,完成后刷新一次
+  Future<void> _deleteSelected() async {
+    final del = widget.remoteDelete;
+    if (del == null) return;
+    final nodes = _selectedNodes;
+    if (nodes.isEmpty) return;
+    final dirCount = nodes.where((n) => n.isDir).length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('删除 ${nodes.length} 项'),
+        content: Text(
+          [
+            '确定删除所选 ${nodes.length} 项吗?',
+            if (dirCount > 0) '(含 $dirCount 个目录,仅能删除空目录)',
+            '\n${nodes.take(8).map((n) => n.name).join('、')}'
+                '${nodes.length > 8 ? ' 等…' : ''}',
+          ].join(''),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.errorColor),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await _runFileOp(() async {
+      for (final node in nodes) {
+        await del(node.path, node.isDir);
+      }
+    });
   }
 }
 
@@ -2449,6 +2622,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
 class _PanelFileRow extends StatefulWidget {
   const _PanelFileRow({
     required this.node,
+    this.selected = false,
     required this.onOpen,
     this.onDownload,
     this.onRename,
@@ -2458,6 +2632,9 @@ class _PanelFileRow extends StatefulWidget {
   });
 
   final _FileNode node;
+
+  /// 滑动多选的选中态
+  final bool selected;
   final VoidCallback onOpen;
   final VoidCallback? onDownload;
   final VoidCallback? onRename;
@@ -2510,14 +2687,26 @@ class _PanelFileRowState extends State<_PanelFileRow> {
             ? null
             : (d) => onContextMenu(d.globalPosition),
         child: Material(
-          color: _hovered
+          color: widget.selected
+              ? AppTheme.brandColor.withValues(alpha: 0.10)
+              : _hovered
               ? AppTheme.subtleSurfaceColor.withValues(alpha: 0.5)
               : Colors.transparent,
           child: InkWell(
             onDoubleTap: widget.onOpen,
             onTap: () {},
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 4.5, 4, 4.5),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(
+                    width: 2,
+                    color: widget.selected
+                        ? AppTheme.brandColor
+                        : Colors.transparent,
+                  ),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(8, 4.5, 4, 4.5),
               child: Row(
                 children: [
                   Icon(
