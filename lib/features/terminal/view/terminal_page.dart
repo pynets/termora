@@ -3420,6 +3420,12 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       return KeyEventResult.handled;
     }
 
+    // ⌃R:全局命令历史搜索(仅空闲提示符;pty 运行中 ⌃R 属于远端 shell)
+    if (isControlPressed && key == LogicalKeyboardKey.keyR) {
+      unawaited(_showHistorySearchDialog());
+      return KeyEventResult.handled;
+    }
+
     if (isShortcutPressed && key == LogicalKeyboardKey.keyV) {
       unawaited(_pasteClipboard());
       return KeyEventResult.handled;
@@ -5588,7 +5594,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   if (showHints) ...[
                     const SizedBox(width: 10),
                     Text(
-                      tr('⌘F 搜索   ⌃C 停止   ⌃D EOF   ⌘± 缩放'),
+                      tr('⌘F 搜索   ⌃R 历史   ⌃C 停止   ⌃D EOF   ⌘± 缩放'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -5812,6 +5818,20 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     final start = row == sel.startRow ? sel.startCol : 0;
     final end = row == sel.endRow ? sel.endCol + 1 : 1 << 20;
     return (start, end);
+  }
+
+  /// ⌃R 全局历史搜索:跨会话查找命令,选中填入输入框
+  Future<void> _showHistorySearchDialog() async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => const _HistorySearchDialog(),
+    );
+    if (selected == null || selected.isEmpty || !mounted) return;
+    _inputController.text = selected;
+    _inputController.selection = TextSelection.collapsed(
+      offset: selected.length,
+    );
+    _restoreInputFocus();
   }
 
   Future<void> _showGridSelectionMenu(Offset position) async {

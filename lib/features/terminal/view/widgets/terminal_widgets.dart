@@ -3158,3 +3158,174 @@ class _TerminalGitTabState extends State<_TerminalGitTab> {
     );
   }
 }
+
+/// ⌃R 全局命令历史搜索 — 命令面板式对话框:
+/// 输入过滤(跨全部会话、去重、最近优先),↑↓ 选择、Enter 填入、Esc 关闭。
+class _HistorySearchDialog extends StatefulWidget {
+  const _HistorySearchDialog();
+
+  @override
+  State<_HistorySearchDialog> createState() => _HistorySearchDialogState();
+}
+
+class _HistorySearchDialogState extends State<_HistorySearchDialog> {
+  final TextEditingController _controller = TextEditingController();
+  List<String> _results = const [];
+  int _highlighted = 0;
+  int _queryGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_search(''));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search(String query) async {
+    final generation = ++_queryGeneration;
+    try {
+      final results = await CommandHistoryStore.search(query, limit: 60);
+      // 只应用最新一次查询的结果(快速输入时丢弃过期响应)
+      if (!mounted || generation != _queryGeneration) return;
+      setState(() {
+        _results = results;
+        _highlighted = 0;
+      });
+    } catch (_) {}
+  }
+
+  void _move(int delta) {
+    if (_results.isEmpty) return;
+    setState(() {
+      _highlighted = (_highlighted + delta).clamp(0, _results.length - 1);
+    });
+  }
+
+  void _confirm() {
+    if (_highlighted >= 0 && _highlighted < _results.length) {
+      Navigator.of(context).pop(_results[_highlighted]);
+    }
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.arrowDown:
+        _move(1);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowUp:
+        _move(-1);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.enter:
+        _confirm();
+        return KeyEventResult.handled;
+      default:
+        return KeyEventResult.ignored;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppTheme.surfaceColor,
+      alignment: Alignment.topCenter,
+      insetPadding: const EdgeInsets.only(top: 96, left: 24, right: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              child: Focus(
+                onKeyEvent: _onKey,
+                child: TextField(
+                  controller: _controller,
+                  autofocus: true,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'Menlo',
+                    color: AppTheme.headingColor,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    prefixIcon: const Icon(LucideIcons.history300, size: 15),
+                    hintText: tr('搜索命令历史(全部会话)…'),
+                    border: const OutlineInputBorder(),
+                  ),
+                  onChanged: (value) => unawaited(_search(value)),
+                  onSubmitted: (_) => _confirm(),
+                ),
+              ),
+            ),
+            Flexible(
+              child: _results.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        tr('没有匹配的历史命令'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppTheme.subtleTextColor,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.only(bottom: 8),
+                      itemCount: _results.length,
+                      itemBuilder: (context, index) {
+                        final command = _results[index];
+                        final active = index == _highlighted;
+                        return InkWell(
+                          onTap: () => Navigator.of(context).pop(command),
+                          child: Container(
+                            color: active
+                                ? AppTheme.brandColor.withValues(alpha: 0.12)
+                                : null,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
+                            ),
+                            child: Text(
+                              command,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontFamily: 'Menlo',
+                                color: active
+                                    ? AppTheme.headingColor
+                                    : AppTheme.subtleTextColor,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: AppTheme.borderColor)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              child: Text(
+                tr('↑↓ 选择 · Enter 填入命令行 · Esc 关闭'),
+                style: TextStyle(fontSize: 11, color: AppTheme.subtleTextColor),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

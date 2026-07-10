@@ -29,6 +29,24 @@ void main() {
       expect(await CommandHistoryStore.load('s2'), ['top']);
     });
 
+    test('search 跨会话去重、最近优先、子串匹配', () async {
+      await CommandHistoryStore.record('s1', 'git status');
+      await CommandHistoryStore.record('s2', 'git push');
+      await CommandHistoryStore.record('s2', 'ls -la');
+      await CommandHistoryStore.record('s3', 'git status'); // 跨会话重复
+
+      expect(
+        await CommandHistoryStore.search('git'),
+        ['git status', 'git push'],
+      );
+      expect(await CommandHistoryStore.search(''), [
+        'git status',
+        'ls -la',
+        'git push',
+      ]);
+      expect(await CommandHistoryStore.search('%'), isEmpty); // LIKE 转义
+    });
+
     test('removeSession 清空该会话', () async {
       await CommandHistoryStore.record('s1', 'ls');
       await CommandHistoryStore.removeSession('s1');

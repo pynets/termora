@@ -36,17 +36,17 @@ class CommandHistoryStore {
   }
 
   /// 记录一条命令:同会话同命令去重上移,并裁掉超出上限的最旧条目。
-  /// used_at 取「墙钟」与「会话内现有最大值 + 1」的较大者:
-  /// 同一毫秒内连续执行也保持严格单调,排序永远反映使用顺序。
+  /// used_at 取「墙钟」与「全库现有最大值 + 1」的较大者:同一毫秒内
+  /// 连续执行也保持严格单调,会话内与跨会话搜索的排序都反映使用顺序。
   static Future<void> record(String sessionKey, String command) async {
     final app = await AppDatabase.instance();
     final now = DateTime.now().millisecondsSinceEpoch;
     app.db.execute(
       'INSERT INTO command_history(session_key, command, used_at) '
       'VALUES(?, ?, MAX(?, COALESCE('
-      '  (SELECT MAX(used_at) + 1 FROM command_history WHERE session_key = ?), 0))) '
+      '  (SELECT MAX(used_at) + 1 FROM command_history), 0))) '
       'ON CONFLICT(session_key, command) DO UPDATE SET used_at = excluded.used_at',
-      [sessionKey, command, now, sessionKey],
+      [sessionKey, command, now],
     );
     app.db.execute(
       'DELETE FROM command_history WHERE session_key = ? AND id NOT IN ('
@@ -54,6 +54,24 @@ class CommandHistoryStore {
       '  ORDER BY used_at DESC, id DESC LIMIT ?)',
       [sessionKey, sessionKey, _maxPerSession],
     );
+  }
+
+  /// 跨会话搜索历史(全库、去重、最近使用优先)。
+  /// [query] 为空返回全局最近命令;匹配是大小写不敏感的子串(LIKE)。
+  static Future<List<String>> search(String query, {int limit = 50}) async {
+    final app = await AppDatabase.instance();
+    await _ensureMigrated(app);
+    final escaped = query
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+    final rows = app.db.select(
+      'SELECT command, MAX(used_at) AS last_used FROM command_history '
+      "WHERE command LIKE ? ESCAPE '\\' "
+      'GROUP BY command ORDER BY last_used DESC LIMIT ?',
+      ['%$escaped%', limit],
+    );
+    return [for (final r in rows) r.columnAt(0) as String];
   }
 
   /// 会话被永久关闭后清掉它的历史
