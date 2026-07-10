@@ -1376,7 +1376,57 @@ class _SftpBrowserState extends State<SftpBrowser> {
     setState(() => _edits.remove(s));
   }
 
+  /// 右键行时的选择整理(Finder 心智):右键未选中的行 → 选择切到该行;
+  /// 右键已选中的行且选了多项 → 视为对整个选择集操作(返回 true)。
+  bool _prepareContextSelection(SlideSelectController<String> select, String name) {
+    if (select.contains(name) && select.selected.length > 1) return true;
+    select.replaceWith(name);
+    return false;
+  }
+
+  /// 多选批量菜单(远端/本地通用骨架)
+  Future<void> _showMultiMenu(
+    Offset position, {
+    required bool isRemote,
+  }) async {
+    final entries = _selectedEntries(isRemote: isRemote);
+    final count = entries.length;
+    final action = await _showContextMenu<String>(position, [
+      _menuItem(
+        'transfer',
+        isRemote ? LucideIcons.download300 : LucideIcons.upload300,
+        isRemote ? '下载 $count 项到本地栏' : '上传 $count 项到远端栏',
+      ),
+      const PopupMenuDivider(),
+      _menuItem('selectAll', LucideIcons.copyCheck300, '全选'),
+      _menuItem('clear', LucideIcons.x300, '清除选择'),
+      const PopupMenuDivider(),
+      _menuItem(
+        'delete',
+        LucideIcons.trash300,
+        '删除 $count 项',
+        color: AppTheme.errorColor,
+      ),
+    ]);
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'transfer':
+        _transferSelected(isRemote: isRemote);
+      case 'selectAll':
+        (isRemote ? _remoteSelect : _localSelect).selectAll([
+          for (final e in isRemote ? _visibleRemote : _visibleLocal) e.name,
+        ]);
+      case 'clear':
+        (isRemote ? _remoteSelect : _localSelect).clear();
+      case 'delete':
+        unawaited(_deleteSelected(isRemote: isRemote));
+    }
+  }
+
   Future<void> _showRemoteEntryMenu(Offset position, SftpEntry entry) async {
+    if (_prepareContextSelection(_remoteSelect, entry.name)) {
+      return _showMultiMenu(position, isRemote: true);
+    }
     final action = await _showContextMenu<String>(position, [
       if (entry.isDir) _menuItem('open', LucideIcons.folder300, '打开'),
       if (!entry.isDir)
@@ -1450,6 +1500,9 @@ class _SftpBrowserState extends State<SftpBrowser> {
   }
 
   Future<void> _showLocalEntryMenu(Offset position, SftpEntry entry) async {
+    if (_prepareContextSelection(_localSelect, entry.name)) {
+      return _showMultiMenu(position, isRemote: false);
+    }
     final action = await _showContextMenu<String>(position, [
       if (entry.isDir) _menuItem('open', LucideIcons.folder300, '打开'),
       _menuItem(
@@ -1593,7 +1646,6 @@ class _SftpBrowserState extends State<SftpBrowser> {
             backgroundColor: Colors.transparent,
             color: AppTheme.brandColor,
           ),
-        if (_localSelect.hasSelection) _buildSelectionBar(isRemote: false),
         Expanded(child: _buildPaneBody(isRemote: false)),
       ],
     );
@@ -1610,7 +1662,6 @@ class _SftpBrowserState extends State<SftpBrowser> {
             backgroundColor: Colors.transparent,
             color: AppTheme.brandColor,
           ),
-        if (_remoteSelect.hasSelection) _buildSelectionBar(isRemote: true),
         Expanded(child: _buildPaneBody(isRemote: true)),
       ],
     );
@@ -1626,50 +1677,6 @@ class _SftpBrowserState extends State<SftpBrowser> {
       for (final e in visible)
         if (select.contains(e.name)) e,
     ];
-  }
-
-  Widget _buildSelectionBar({required bool isRemote}) {
-    final select = isRemote ? _remoteSelect : _localSelect;
-    final visible = isRemote ? _visibleRemote : _visibleLocal;
-    final count = select.selected.length;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.brandColor.withValues(alpha: 0.07),
-        border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      child: Row(
-        children: [
-          Text(
-            '已选 $count 项',
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.brandColor,
-            ),
-          ),
-          const Spacer(),
-          _headerAction(
-            '全选',
-            LucideIcons.copyCheck300,
-            count == visible.length
-                ? null
-                : () => select.selectAll([for (final e in visible) e.name]),
-          ),
-          _headerAction(
-            isRemote ? '下载到本地栏' : '上传到远端栏',
-            isRemote ? LucideIcons.download300 : LucideIcons.upload300,
-            () => _transferSelected(isRemote: isRemote),
-          ),
-          _headerAction(
-            '删除所选',
-            LucideIcons.trash300,
-            () => unawaited(_deleteSelected(isRemote: isRemote)),
-          ),
-          _headerAction('清除选择', LucideIcons.x300, select.clear),
-        ],
-      ),
-    );
   }
 
   /// 批量传输:所选条目逐个入传输队列(与单项拖拽同一底座,可取消/重试)

@@ -1747,7 +1747,75 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     );
   }
 
+  /// 右键行时的选择整理(Finder 心智):右键未选中的行 → 选择切到该行;
+  /// 右键已选中的行且选了多项 → 弹批量菜单。
   Future<void> _showRowMenu(Offset globalPosition, _FileNode node) async {
+    if (_select.contains(node.path) && _select.selected.length > 1) {
+      return _showMultiRowMenu(globalPosition);
+    }
+    _select.replaceWith(node.path);
+    return _showSingleRowMenu(globalPosition, node);
+  }
+
+  Future<void> _showMultiRowMenu(Offset globalPosition) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final count = _select.selected.length;
+    final canDownload = widget.remoteDownloader != null;
+    final canDelete = widget.remoteDelete != null;
+    final action = await showMenu<String>(
+      context: context,
+      color: AppTheme.surfaceColor,
+      position: RelativeRect.fromRect(
+        globalPosition & Size.zero,
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'insert',
+          height: 34,
+          child: Text('插入 $count 个路径到命令行'),
+        ),
+        if (canDownload)
+          PopupMenuItem(
+            value: 'download',
+            height: 34,
+            child: Text('下载 $count 项…'),
+          ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(value: 'selectAll', height: 34, child: Text('全选')),
+        const PopupMenuItem(value: 'clear', height: 34, child: Text('清除选择')),
+        if (canDelete) const PopupMenuDivider(),
+        if (canDelete)
+          PopupMenuItem(
+            value: 'delete',
+            height: 34,
+            child: Text(
+              '删除 $count 项',
+              style: TextStyle(color: AppTheme.errorColor),
+            ),
+          ),
+      ],
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'insert':
+        for (final n in _selectedNodes) {
+          widget.onInsertPath(n.path);
+        }
+        _select.clear();
+      case 'download':
+        unawaited(_downloadSelected());
+      case 'selectAll':
+        _select.selectAll([for (final n in _visible) n.path]);
+      case 'clear':
+        _select.clear();
+      case 'delete':
+        unawaited(_deleteSelected());
+    }
+  }
+
+  Future<void> _showSingleRowMenu(Offset globalPosition, _FileNode node) async {
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
     final canDownload = widget.remoteDownloader != null;
@@ -1783,10 +1851,10 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
           ),
         if (canRename)
           const PopupMenuItem(value: 'rename', height: 34, child: Text('重命名')),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'copyPath',
           height: 34,
-          child: Text('复制远端路径'),
+          child: Text(_isRemote ? '复制远端路径' : '复制路径'),
         ),
         if (canDelete) const PopupMenuDivider(),
         if (canDelete)
@@ -1997,7 +2065,6 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         if (_isRemote) _buildPathBar(),
         _buildFindBar(),
         Divider(height: 1, thickness: 1, color: AppTheme.borderColor),
-        if (_select.hasSelection) _buildSelectionBar(),
         Expanded(child: _buildBody()),
         if (_transfers.isNotEmpty) _buildTransfersFooter(),
       ],
@@ -2457,7 +2524,8 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
           : () => _downloadEntry(node),
       onRename: widget.remoteRename == null ? null : () => _renameNode(node),
       onDelete: widget.remoteDelete == null ? null : () => _deleteNode(node),
-      onContextMenu: _isRemote ? (pos) => _showRowMenu(pos, node) : null,
+      // 本地模式也给右键:多选批量(插入路径等)与单项操作都从菜单走
+      onContextMenu: (pos) => _showRowMenu(pos, node),
       dragItemProvider: widget.remoteDownloader == null || node.isDir
           ? null
           : () async {
@@ -2474,82 +2542,6 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     for (final n in _visible)
       if (_select.contains(n.path)) n,
   ];
-
-  Widget _buildSelectionBar() {
-    final visible = _visible;
-    final count = _select.selected.length;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.brandColor.withValues(alpha: 0.07),
-        border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      child: Row(
-        children: [
-          const SizedBox(width: 4),
-          Text(
-            '已选 $count 项',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.brandColor,
-            ),
-          ),
-          const Spacer(),
-          _selectionAction(
-            '全选',
-            LucideIcons.copyCheck300,
-            count == visible.length
-                ? null
-                : () => _select.selectAll([for (final n in visible) n.path]),
-          ),
-          _selectionAction(
-            '插入路径到命令行',
-            LucideIcons.terminal300,
-            () {
-              for (final node in _selectedNodes) {
-                widget.onInsertPath(node.path);
-              }
-              _select.clear();
-            },
-          ),
-          if (widget.remoteDownloader != null)
-            _selectionAction(
-              '下载所选…',
-              LucideIcons.download300,
-              () => unawaited(_downloadSelected()),
-            ),
-          if (widget.remoteDelete != null)
-            _selectionAction(
-              '删除所选',
-              LucideIcons.trash300,
-              () => unawaited(_deleteSelected()),
-            ),
-          _selectionAction('清除选择', LucideIcons.x300, _select.clear),
-        ],
-      ),
-    );
-  }
-
-  Widget _selectionAction(String tooltip, IconData icon, VoidCallback? onTap) {
-    return SizedBox(
-      width: 24,
-      height: 24,
-      child: IconButton(
-        tooltip: tooltip,
-        padding: EdgeInsets.zero,
-        splashRadius: 12,
-        icon: Icon(
-          icon,
-          size: 13,
-          color: onTap == null
-              ? AppTheme.subtleTextColor.withValues(alpha: 0.4)
-              : AppTheme.subtleTextColor,
-        ),
-        onPressed: onTap,
-      ),
-    );
-  }
 
   /// 批量下载:选一次本地目录,所选条目逐个入传输队列
   Future<void> _downloadSelected() async {

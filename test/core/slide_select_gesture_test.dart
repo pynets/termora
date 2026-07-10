@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:termora/core/widgets/slide_select.dart';
 
@@ -42,7 +43,7 @@ void main() {
     expect(c.selected, {'item2', 'item3', 'item4', 'item5', 'item6'});
   });
 
-  testWidgets('原地单击 = toggle 单项', (tester) async {
+  testWidgets('原地单击 = 替换选中单项;⌘+单击 = toggle', (tester) async {
     final c = SlideSelectController<String>();
     await tester.pumpWidget(_harness(c, items));
 
@@ -54,13 +55,54 @@ void main() {
     await tester.pump();
     expect(c.selected, {'item3'});
 
+    // 点另一行:替换而非累加
+    await tester.tapAt(
+      tester.getCenter(find.text('item5')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryMouseButton,
+    );
+    await tester.pump();
+    expect(c.selected, {'item5'});
+
+    // ⌘+单击:追加/移除
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
     await tester.tapAt(
       tester.getCenter(find.text('item3')),
       kind: PointerDeviceKind.mouse,
       buttons: kPrimaryMouseButton,
     );
     await tester.pump();
-    expect(c.hasSelection, isFalse);
+    expect(c.selected, {'item5', 'item3'});
+    await tester.tapAt(
+      tester.getCenter(find.text('item3')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryMouseButton,
+    );
+    await tester.pump();
+    expect(c.selected, {'item5'});
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+  });
+
+  testWidgets('二次框选 = 替换而非累加', (tester) async {
+    final c = SlideSelectController<String>();
+    await tester.pumpWidget(_harness(c, items));
+
+    Future<void> drag(String from, String to) async {
+      final g = await tester.startGesture(
+        tester.getCenter(find.text(from)),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryMouseButton,
+      );
+      await g.moveTo(tester.getCenter(find.text(to)));
+      await tester.pump();
+      await g.up();
+      await tester.pump();
+    }
+
+    await drag('item1', 'item3');
+    expect(c.selected, {'item1', 'item2', 'item3'});
+    await drag('item6', 'item7');
+    expect(c.selected, {'item6', 'item7'});
   });
 
   testWidgets('横向为主的拖动不触发多选', (tester) async {
