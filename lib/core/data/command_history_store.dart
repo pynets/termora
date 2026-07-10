@@ -45,7 +45,8 @@ class CommandHistoryStore {
       'INSERT INTO command_history(session_key, command, used_at) '
       'VALUES(?, ?, MAX(?, COALESCE('
       '  (SELECT MAX(used_at) + 1 FROM command_history), 0))) '
-      'ON CONFLICT(session_key, command) DO UPDATE SET used_at = excluded.used_at',
+      'ON CONFLICT(session_key, command) DO UPDATE '
+      'SET used_at = excluded.used_at, use_count = use_count + 1',
       [sessionKey, command, now],
     );
     app.db.execute(
@@ -72,6 +73,24 @@ class CommandHistoryStore {
       ['%$escaped%', limit],
     );
     return [for (final r in rows) r.columnAt(0) as String];
+  }
+
+  /// 按命令首词聚合的全库使用次数(Tab 补全的频率排序依据)。
+  /// 表规模 = 每会话 ≤200 条,内存聚合亚毫秒级。
+  static Future<Map<String, int>> usageByFirstToken() async {
+    final app = await AppDatabase.instance();
+    await _ensureMigrated(app);
+    final rows = app.db.select(
+      'SELECT command, use_count FROM command_history',
+    );
+    final usage = <String, int>{};
+    for (final row in rows) {
+      final command = (row.columnAt(0) as String).trim();
+      if (command.isEmpty) continue;
+      final first = command.split(RegExp(r'\s+')).first;
+      usage[first] = (usage[first] ?? 0) + (row.columnAt(1) as int);
+    }
+    return usage;
   }
 
   /// 会话被永久关闭后清掉它的历史

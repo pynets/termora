@@ -80,6 +80,14 @@ class AppDatabase {
       ''');
       db.execute('PRAGMA user_version = 1');
     }
+    if (version < 2) {
+      // v2:命令使用次数(喂给 Tab 补全的频率排序)
+      db.execute(
+        'ALTER TABLE command_history '
+        'ADD COLUMN use_count INTEGER NOT NULL DEFAULT 1',
+      );
+      db.execute('PRAGMA user_version = 2');
+    }
     // FTS 虚表单独建:trigram 需要 SQLite ≥3.34(macOS 系统库满足),
     // 失败不致命 —— 笔记搜索回落内存过滤
     try {

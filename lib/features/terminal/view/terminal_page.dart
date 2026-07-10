@@ -3796,8 +3796,19 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         ..._systemCommandsCache,
         ..._history.map((entry) => entry.split(RegExp(r'\s+')).first),
       };
+      // 频率排序:全库使用次数高的命令排前(SQLite 聚合),同频字母序 ——
+      // 常用命令打一两个字母 Tab 就能直中
+      var usage = const <String, int>{};
+      try {
+        usage = await CommandHistoryStore.usageByFirstToken();
+      } catch (_) {
+        // 频率信息只是排序增强,取不到就退回纯字母序
+      }
       return commands.where((command) => command.startsWith(token)).toList()
-        ..sort();
+        ..sort((a, b) {
+          final byUsage = (usage[b] ?? 0).compareTo(usage[a] ?? 0);
+          return byUsage != 0 ? byUsage : a.compareTo(b);
+        });
     }
 
     final pathToken = _stripMatchingQuotes(token);

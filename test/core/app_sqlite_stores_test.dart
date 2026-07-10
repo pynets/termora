@@ -47,6 +47,17 @@ void main() {
       expect(await CommandHistoryStore.search('%'), isEmpty); // LIKE 转义
     });
 
+    test('use_count 累计与按首词聚合(补全频率排序依据)', () async {
+      await CommandHistoryStore.record('s1', 'git status');
+      await CommandHistoryStore.record('s1', 'git status'); // 同会话重复 +1
+      await CommandHistoryStore.record('s2', 'git push');   // 跨会话同首词
+      await CommandHistoryStore.record('s1', 'ls -la');
+
+      final usage = await CommandHistoryStore.usageByFirstToken();
+      expect(usage['git'], 3);
+      expect(usage['ls'], 1);
+    });
+
     test('removeSession 清空该会话', () async {
       await CommandHistoryStore.record('s1', 'ls');
       await CommandHistoryStore.removeSession('s1');
