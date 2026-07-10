@@ -482,20 +482,19 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
         }
         continue;
       }
-      final isBlank = char == ' ' || char == '\t';
-      final hasBackground = style.backgroundColor != null;
-      if (!isBlank || hasBackground || linkUrl != null) {
-        _appendRun(
-          runs,
-          _TerminalGridRun(
-            column: column,
-            width: width,
-            text: char,
-            style: effectiveStyle,
-            linkUrl: linkUrl,
-          ),
-        );
-      }
+      // 空白也要生成 run(与相邻同样式字符合并成连续文本):
+      // 之前空格被跳过,一行在每个词间断成独立的定位 Text,词间是真空洞 —
+      // SelectionArea 的选中高亮在洞处漏缝,复制时起止点跨洞会丢字符。
+      _appendRun(
+        runs,
+        _TerminalGridRun(
+          column: column,
+          width: width,
+          text: char,
+          style: effectiveStyle,
+          linkUrl: linkUrl,
+        ),
+      );
       column += width;
     }
     return column;
