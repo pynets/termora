@@ -3,6 +3,7 @@
 # ==============================================================================
 # Termora — 一键全自动版本发布脚本 (自动化改版本号、编译打包 DMG、Git提交、上传GitHub Release)
 # 使用方法:
+#   ./scripts/release.sh               # 不传参数,自动 patch +1 (如 0.0.8 → 0.0.9)
 #   ./scripts/release.sh 0.0.3          # 指定发布版本号 0.0.3
 #   ./scripts/release.sh 0.0.3 3        # 指定版本号 0.0.3 和构建号 3 (默认构建号自动加1)
 # ==============================================================================
@@ -32,16 +33,17 @@ fi
 NEW_VERSION=$1
 BUILD_NUMBER=$2
 
-# 如果未传入参数，交互式询问版本号
+# 如果未传入参数，自动从当前版本 patch +1
 if [ -z "$NEW_VERSION" ]; then
-  # 从 pubspec.yaml 读取当前版本
   CURRENT_FULL_VER=$(grep "^version:" pubspec.yaml | head -n 1 | awk '{print $2}')
-  echo -e "${YELLOW}当前 pubspec.yaml 版本为: ${GREEN}${CURRENT_FULL_VER}${NC}"
-  read -p "请输入目标发布的版本号 (例如 0.0.3): " NEW_VERSION
-  if [ -z "$NEW_VERSION" ]; then
-    echo -e "${RED}错误: 版本号不能为空，退出脚本。${NC}"
-    exit 1
-  fi
+  CURRENT_VER=$(echo "$CURRENT_FULL_VER" | cut -d '+' -f 1)
+  MAJOR=$(echo "$CURRENT_VER" | cut -d '.' -f 1)
+  MINOR=$(echo "$CURRENT_VER" | cut -d '.' -f 2)
+  PATCH=$(echo "$CURRENT_VER" | cut -d '.' -f 3)
+  PATCH=${PATCH:-0}
+  NEW_PATCH=$((PATCH + 1))
+  NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+  echo -e "${YELLOW}未指定版本号，自动从 ${GREEN}${CURRENT_VER}${YELLOW} 升至 ${GREEN}${NEW_VERSION}${NC}"
 fi
 
 # 移除开头的 v (如用户输入 v0.0.3)
@@ -134,6 +136,23 @@ done
 # 3. 静态检查 & macOS Release 编译
 echo -e "\n${CYAN}[2/6] 执行编译打包 macOS Release 应用...${NC}"
 flutter build macos --release
+
+# 3.5 使用固定签名重签 .app（保证升级后 TCC 权限不失效）
+CERT_NAME="Termora Self-Signed"
+APP_BUNDLE="build/macos/Build/Products/Release/termora.app"
+ENTITLEMENTS="macos/Runner/Release.entitlements"
+
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CERT_NAME"; then
+  echo -e "  👉 使用固定证书 \"$CERT_NAME\" 重签 .app ..."
+  codesign --deep --force --options runtime \
+    --sign "$CERT_NAME" \
+    --entitlements "$ENTITLEMENTS" \
+    "$APP_BUNDLE"
+  echo -e "${GREEN}  ✔ 重签完成，签名身份固定（升级后 TCC 权限不会丢失）${NC}"
+else
+  echo -e "${YELLOW}  ⚠ 未找到证书 \"$CERT_NAME\"，跳过重签（使用默认 ad-hoc 签名）${NC}"
+  echo -e "${YELLOW}    运行 ./scripts/create_signing_cert.sh 创建证书后重新发布可解决升级后权限失效问题${NC}"
+fi
 
 # 4. 生成 DMG 镜像包
 echo -e "\n${CYAN}[3/6] 制作 macOS DMG 镜像安装包...${NC}"
