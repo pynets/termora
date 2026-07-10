@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 会话日志录制(WindTerm 式 session logging):把终端输出实时落盘成
 /// 可读的纯文本日志。每个会话一个实例,互不干扰。
@@ -39,8 +40,8 @@ class SessionLogger {
     final stamp = _stamp(now);
     final file = File('$base/${safe.isEmpty ? 'session' : safe}-$stamp.log');
     final sink = file.openWrite(mode: FileMode.append);
-    sink.writeln('===== termora 会话日志 · $sessionLabel');
-    sink.writeln('===== 开始 ${now.toLocal()}');
+    sink.writeln(tr2('===== termora 会话日志 · {0}', [sessionLabel]));
+    sink.writeln(tr2('===== 开始 {0}', [now.toLocal()]));
     sink.writeln('');
     _sink = sink;
     _path = file.path;

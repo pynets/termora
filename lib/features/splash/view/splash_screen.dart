@@ -8,6 +8,7 @@ import 'package:termora/app/shell/main_shell.dart';
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/services/update_service.dart';
 import 'package:termora/features/splash/controller/splash_controller.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 启动页 - 移植并适配自 superdesk
 class SplashScreen extends ConsumerStatefulWidget {
@@ -54,7 +55,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         await windowManager.show();
         await windowManager.focus();
       } catch (e) {
-        debugPrint('显示启动窗口失败: $e');
+        debugPrint(tr2('显示启动窗口失败: {0}', [e]));
       }
       _startInitialization();
     });
@@ -164,7 +165,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             ),
             const SizedBox(width: 7),
             Text(
-              '发现新版本 ${update.tagName}',
+              tr2('发现新版本 {0}', [update.tagName]),
               style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
@@ -176,7 +177,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         if (update.sizeLabel.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
-            '安装包 ${update.sizeLabel} · 下载完成后自动安装并重启',
+            tr2('安装包 {0} · 下载完成后自动安装并重启', [update.sizeLabel]),
             style: TextStyle(fontSize: 11.5, color: AppTheme.subtleTextColor),
           ),
         ],
@@ -214,7 +215,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   foregroundColor: AppTheme.subtleTextColor,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
-                child: const Text('稍后', style: TextStyle(fontSize: 12)),
+                child: Text(tr('稍后'), style: TextStyle(fontSize: 12)),
               ),
             ),
           ],
@@ -281,7 +282,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '正在准备工作空间...',
+                                tr('正在准备工作空间...'),
                                 style: TextStyle(
                                   fontSize: 12.5,
                                   color: AppTheme.bodyColor,
@@ -306,7 +307,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '正在启动',
+                                tr('正在启动'),
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 16,
@@ -318,7 +319,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Termora 智能终端工作平台',
+                                tr('Termora 智能终端工作平台'),
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 12,

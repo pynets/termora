@@ -9,6 +9,7 @@ import 'package:termora/features/notes/domain/markdown_parser.dart';
 import 'package:termora/features/notes/view/widgets/editable_table_block.dart';
 import 'package:termora/features/notes/view/widgets/markdown_editing_controller.dart';
 import 'package:termora/features/notes/view/widgets/markdown_preview.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 块式自绘编辑器(muya/Notion 架构的 Flutter 版):
 /// 文档切成块,每块渲染成真实组件——表格就是表格、图片就是图片、
@@ -311,7 +312,7 @@ class _BlockEditorState extends State<BlockEditor> {
                     key: const ValueKey('empty-placeholder'),
                     padding: const EdgeInsets.only(top: 40),
                     child: Text(
-                      '点击任意空白处开始书写…',
+                      tr('点击任意空白处开始书写…'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
@@ -458,7 +459,7 @@ class _BlockEditorState extends State<BlockEditor> {
           decoration: InputDecoration(
             isDense: true,
             border: InputBorder.none,
-            hintText: isInsert ? '写点什么…(Esc 完成)' : null,
+            hintText: isInsert ? tr('写点什么…(Esc 完成)') : null,
             hintStyle: TextStyle(
               fontSize: 14.5,
               color: AppTheme.subtleTextColor.withValues(alpha: 0.7),

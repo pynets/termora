@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:termora/features/remote/domain/sftp_entry.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 class LocalFileException implements Exception {
   const LocalFileException(this.message);
@@ -116,7 +117,7 @@ class LocalFileService {
 
   static String _friendly(FileSystemException error) {
     final os = error.osError?.message ?? '';
-    if (os.contains('Directory not empty')) return '仅能删除空目录';
+    if (os.contains('Directory not empty')) return tr('仅能删除空目录');
     if (os.contains('Permission denied') || os.contains('Operation not permitted')) {
       return '没有权限访问:${error.path ?? ''}';
     }

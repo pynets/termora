@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 导出格式
 enum ExportFormat {
@@ -9,9 +10,11 @@ enum ExportFormat {
   sqlInsert('SQL INSERT', 'sql'),
   markdown('Markdown 表格', 'md');
 
-  const ExportFormat(this.label, this.extension);
+  const ExportFormat(this.labelZh, this.extension);
 
-  final String label;
+  final String labelZh;
+
+  String get label => AppL10n.tr(labelZh);
   final String extension;
 }
 

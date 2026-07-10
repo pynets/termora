@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/features/terminal/data/link_matcher_store.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 打开自定义链接规则管理弹窗。
 Future<void> showLinkMatcherManager(BuildContext context) async {
@@ -24,7 +25,7 @@ class _LinkMatcherManagerDialog extends StatelessWidget {
         children: [
           Icon(LucideIcons.link300, size: 17, color: AppTheme.brandColor),
           const SizedBox(width: 8),
-          const Text('自定义链接规则'),
+          Text(tr('自定义链接规则')),
         ],
       ),
       content: SizedBox(
@@ -45,7 +46,7 @@ class _LinkMatcherManagerDialog extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '还没有链接规则,点「新建」添加',
+                      tr('还没有链接规则,点「新建」添加'),
                       style: TextStyle(
                         fontSize: 12.5,
                         color: AppTheme.subtleTextColor,
@@ -75,12 +76,12 @@ class _LinkMatcherManagerDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => _edit(context, null),
-          child: const Text('新建'),
+          child: Text(tr('新建')),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('完成'),
+          child: Text(tr('完成')),
         ),
       ],
     );
@@ -105,7 +106,7 @@ class _LinkMatcherManagerDialog extends StatelessWidget {
       ),
       subtitle: Text(
         '${matcher.pattern} → ${matcher.urlTemplate}'
-        '${matcher.regex == null ? ' · 正则无效' : ''}',
+        '${matcher.regex == null ? tr(' · 正则无效') : ''}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -125,12 +126,12 @@ class _LinkMatcherManagerDialog extends StatelessWidget {
                 LinkMatcherStore.upsert(matcher.copyWith(enabled: v)),
           ),
           IconButton(
-            tooltip: '编辑',
+            tooltip: tr('编辑'),
             icon: Icon(LucideIcons.penLine300, size: 15),
             onPressed: () => _edit(context, matcher),
           ),
           IconButton(
-            tooltip: '删除',
+            tooltip: tr('删除'),
             icon: Icon(
               LucideIcons.trash300,
               size: 15,
@@ -214,23 +215,23 @@ class _LinkMatcherEditDialogState extends State<_LinkMatcherEditDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.existing == null ? '新建链接规则' : '编辑链接规则'),
+      title: Text(widget.existing == null ? tr('新建链接规则') : tr('编辑链接规则')),
       content: SizedBox(
         width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _field(_name, '名称(可空)', '如 JIRA 工单'),
+            _field(_name, tr('名称(可空)'), tr('如 JIRA 工单')),
             const SizedBox(height: 10),
             _field(
               _pattern,
-              '正则表达式',
+              tr('正则表达式'),
               r'如 JIRA-(\d+)',
               error: _pattern.text.trim().isNotEmpty && !_patternValid,
             ),
             const SizedBox(height: 10),
-            _field(_template, 'URL 模板', r'如 https://jira.example.com/browse/JIRA-$1'),
+            _field(_template, tr('URL 模板'), r'如 https://jira.example.com/browse/JIRA-$1'),
             const SizedBox(height: 8),
             Text(
               r'模板里 $0 为整个匹配,$1..$9 为捕获组。'
@@ -247,12 +248,12 @@ class _LinkMatcherEditDialogState extends State<_LinkMatcherEditDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(tr('取消')),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
           onPressed: _save,
-          child: const Text('保存'),
+          child: Text(tr('保存')),
         ),
       ],
     );
@@ -275,7 +276,7 @@ class _LinkMatcherEditDialogState extends State<_LinkMatcherEditDialog> {
         isDense: true,
         labelText: label,
         hintText: hint,
-        errorText: error ? '正则无效' : null,
+        errorText: error ? tr('正则无效') : null,
         hintStyle: TextStyle(
           fontSize: 11,
           color: AppTheme.subtleTextColor.withValues(alpha: 0.6),

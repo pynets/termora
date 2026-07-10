@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// ClickHouse 错误(HTTP 返回非 200 时的服务端文本)
 class ClickHouseException implements Exception {
@@ -58,7 +59,7 @@ class ClickHouseService {
           )
           .timeout(timeout);
     } catch (e) {
-      throw ClickHouseException('无法连接到 ${config.host}:${config.port} — $e');
+      throw ClickHouseException(tr2('无法连接到 {0}:{1} — {2}', [config.host, config.port, e]));
     }
 
     final body = utf8.decode(resp.bodyBytes);

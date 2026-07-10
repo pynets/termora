@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 表结构面板 — 列定义 + 索引(DBeaver「属性」页的精简版)
 class TableStructureView extends StatelessWidget {
@@ -24,15 +25,15 @@ class TableStructureView extends StatelessWidget {
       children: [
         _overviewCard(),
         const SizedBox(height: 18),
-        _sectionTitle('列 (${structure.columns.length})'),
+        _sectionTitle(tr2('列 ({0})', [structure.columns.length])),
         const SizedBox(height: 8),
         _columnsTable(),
         const SizedBox(height: 20),
-        _sectionTitle('索引 (${structure.indexes.length})'),
+        _sectionTitle(tr2('索引 ({0})', [structure.indexes.length])),
         const SizedBox(height: 8),
         if (structure.indexes.isEmpty)
           Text(
-            '(无索引)',
+            tr('(无索引)'),
             style: TextStyle(fontSize: 12, color: AppTheme.subtleTextColor),
           )
         else
@@ -63,7 +64,7 @@ class TableStructureView extends StatelessWidget {
               const SizedBox(width: 22),
               _metric(LucideIcons.hardDrive, structure.prettySize),
               const SizedBox(width: 22),
-              _metric(LucideIcons.columns3, '${structure.columns.length} 列'),
+              _metric(LucideIcons.columns3, tr2('{0} 列', [structure.columns.length])),
             ],
           ),
           if (structure.comment != null && structure.comment!.isNotEmpty) ...[
@@ -150,11 +151,11 @@ class TableStructureView extends StatelessWidget {
             decoration: BoxDecoration(color: AppTheme.mutedSurfaceColor),
             children: [
               const SizedBox(height: 24),
-              _cell(Text('名称', style: headerStyle)),
-              _cell(Text('类型', style: headerStyle)),
-              _cell(Text('可空', style: headerStyle)),
-              _cell(Text('默认值', style: headerStyle)),
-              if (hasComments) _cell(Text('注释', style: headerStyle)),
+              _cell(Text(tr('名称'), style: headerStyle)),
+              _cell(Text(tr('类型'), style: headerStyle)),
+              _cell(Text(tr('可空'), style: headerStyle)),
+              _cell(Text(tr('默认值'), style: headerStyle)),
+              if (hasComments) _cell(Text(tr('注释'), style: headerStyle)),
             ],
           ),
           for (final col in structure.columns)

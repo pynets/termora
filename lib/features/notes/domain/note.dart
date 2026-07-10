@@ -1,3 +1,4 @@
+import 'package:termora/core/l10n/app_l10n.dart';
 /// 一条 markdown 笔记。标题不单独存储,从正文首个有效行推导,
 /// 与 marktext 一致:文件即内容,改第一行标题就变。
 class Note {
@@ -27,7 +28,7 @@ class Note {
       final stripped = stripMarkdownLine(line);
       if (stripped.isNotEmpty) return stripped;
     }
-    return '无标题笔记';
+    return tr('无标题笔记');
   }
 
   /// 列表摘要:标题之后的第一个非空行

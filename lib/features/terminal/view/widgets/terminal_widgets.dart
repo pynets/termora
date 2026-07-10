@@ -988,7 +988,7 @@ class _TerminalSessionTab extends ConsumerWidget {
               if (canClose) ...[
                 const SizedBox(width: 4),
                 _TerminalIconButton(
-                  tooltip: '关闭终端',
+                  tooltip: tr('关闭终端'),
                   icon: LucideIcons.x300,
                   size: 20,
                   iconSize: 12,
@@ -1029,7 +1029,7 @@ Future<bool> _showCloseTerminalConfirm(
       backgroundColor: AppTheme.surfaceColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Text(
-        '关闭 $title?',
+        tr2('关闭 {0}?', [title]),
         style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
@@ -1037,18 +1037,18 @@ Future<bool> _showCloseTerminalConfirm(
         ),
       ),
       content: Text(
-        running ? '该终端正在运行,关闭会结束当前进程。' : '关闭后该终端会话将被移除。',
+        running ? tr('该终端正在运行,关闭会结束当前进程。') : tr('关闭后该终端会话将被移除。'),
         style: TextStyle(fontSize: 13.5, color: AppTheme.bodyColor),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: Text('取消', style: TextStyle(color: AppTheme.subtleTextColor)),
+          child: Text(tr('取消'), style: TextStyle(color: AppTheme.subtleTextColor)),
         ),
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
           child: Text(
-            '关闭',
+            tr('关闭'),
             style: TextStyle(
               color: AppTheme.errorColor,
               fontWeight: FontWeight.w600,
@@ -1581,7 +1581,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     if (uploader == null) return;
     final initial = await FilePickerHelper.getInitialDirectory();
     final result = await FilePicker.pickFiles(
-      dialogTitle: '选择要上传的文件',
+      dialogTitle: tr('选择要上传的文件'),
       allowMultiple: true,
       initialDirectory: initial,
     );
@@ -1599,7 +1599,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     if (uploadDir == null) return;
     final initial = await FilePickerHelper.getInitialDirectory();
     final localDir = await FilePicker.getDirectoryPath(
-      dialogTitle: '选择要上传的目录',
+      dialogTitle: tr('选择要上传的目录'),
       initialDirectory: initial,
     );
     if (localDir == null || localDir.isEmpty) return;
@@ -1615,7 +1615,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
   Future<void> _newFileIn(String remoteDir) async {
     final uploader = widget.remoteUploader;
     if (uploader == null) return;
-    final name = await _promptName(title: '新建文件', confirm: '创建');
+    final name = await _promptName(title: tr('新建文件'), confirm: tr('创建'));
     if (name == null || name.isEmpty) return;
     try {
       final tempDir = await Directory.systemTemp.createTemp('termora_newfile_');
@@ -1628,7 +1628,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text('新建文件失败:$e')),
+        SnackBar(content: Text(tr2('新建文件失败:{0}', [e]))),
       );
     }
   }
@@ -1652,12 +1652,12 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     final String? localPath;
     if (node.isDir) {
       localPath = await FilePicker.getDirectoryPath(
-        dialogTitle: '下载目录「${node.name}」到…',
+        dialogTitle: tr2('下载目录「{0}」到…', [node.name]),
         initialDirectory: initial,
       );
     } else {
       localPath = await FilePicker.saveFile(
-        dialogTitle: '下载到…',
+        dialogTitle: tr('下载到…'),
         fileName: node.name,
         initialDirectory: initial,
       );
@@ -1686,7 +1686,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text('操作失败:$e')),
+        SnackBar(content: Text(tr2('操作失败:{0}', [e]))),
       );
     }
   }
@@ -1695,8 +1695,8 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     final rename = widget.remoteRename;
     if (rename == null) return;
     final name = await _promptName(
-      title: '重命名',
-      confirm: '重命名',
+      title: tr('重命名'),
+      confirm: tr('重命名'),
       initial: node.name,
     );
     if (name == null || name.isEmpty || name == node.name) return;
@@ -1709,21 +1709,21 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(node.isDir ? '删除目录' : '删除文件'),
+        title: Text(node.isDir ? tr('删除目录') : tr('删除文件')),
         content: Text(
           node.isDir
-              ? '确定删除目录「${node.name}」吗?(仅能删除空目录)'
-              : '确定删除「${node.name}」吗?',
+              ? tr2('确定删除目录「{0}」吗?(仅能删除空目录)', [node.name])
+              : tr2('确定删除「{0}」吗?', [node.name]),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.errorColor),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
+            child: Text(tr('删除')),
           ),
         ],
       ),
@@ -1735,7 +1735,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
   Future<void> _makeDirIn(String parentDir) async {
     final mkdir = widget.remoteMakeDir;
     if (mkdir == null) return;
-    final name = await _promptName(title: '新建目录', confirm: '创建');
+    final name = await _promptName(title: tr('新建目录'), confirm: tr('创建'));
     if (name == null || name.isEmpty) return;
     await _runFileOp(() => mkdir(parentDir, name));
   }
@@ -1744,7 +1744,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     await Clipboard.setData(ClipboardData(text: node.path));
     if (!mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text('已复制路径:${node.path}')),
+      SnackBar(content: Text(tr2('已复制路径:{0}', [node.path]))),
     );
   }
 
@@ -1771,7 +1771,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
@@ -1810,24 +1810,24 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         PopupMenuItem(
           value: 'insert',
           height: 34,
-          child: Text('插入 $count 个路径到命令行'),
+          child: Text(tr2('插入 {0} 个路径到命令行', [count])),
         ),
         if (canDownload)
           PopupMenuItem(
             value: 'download',
             height: 34,
-            child: Text('下载 $count 项…'),
+            child: Text(tr2('下载 {0} 项…', [count])),
           ),
         const PopupMenuDivider(),
-        const PopupMenuItem(value: 'selectAll', height: 34, child: Text('全选')),
-        const PopupMenuItem(value: 'clear', height: 34, child: Text('清除选择')),
+        PopupMenuItem(value: 'selectAll', height: 34, child: Text(tr('全选'))),
+        PopupMenuItem(value: 'clear', height: 34, child: Text(tr('清除选择'))),
         if (canDelete) const PopupMenuDivider(),
         if (canDelete)
           PopupMenuItem(
             value: 'delete',
             height: 34,
             child: Text(
-              '删除 $count 项',
+              tr2('删除 {0} 项', [count]),
               style: TextStyle(color: AppTheme.errorColor),
             ),
           ),
@@ -1866,7 +1866,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       ),
       items: [
         if (node.isDir)
-          const PopupMenuItem(value: 'open', height: 34, child: Text('打开')),
+          PopupMenuItem(value: 'open', height: 34, child: Text(tr('打开'))),
         if (node.isDir && widget.onCdInTerminal != null)
           const PopupMenuItem(
             value: 'cd',
@@ -1883,21 +1883,21 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
           PopupMenuItem(
             value: 'download',
             height: 34,
-            child: Text(node.isDir ? '下载目录' : '下载'),
+            child: Text(node.isDir ? tr('下载目录') : tr('下载')),
           ),
         if (canRename)
-          const PopupMenuItem(value: 'rename', height: 34, child: Text('重命名')),
+          PopupMenuItem(value: 'rename', height: 34, child: Text(tr('重命名'))),
         PopupMenuItem(
           value: 'copyPath',
           height: 34,
-          child: Text(_isRemote ? '复制远端路径' : '复制路径'),
+          child: Text(_isRemote ? tr('复制远端路径') : tr('复制路径')),
         ),
         if (canDelete) const PopupMenuDivider(),
         if (canDelete)
           PopupMenuItem(
             value: 'delete',
             height: 34,
-            child: Text('删除', style: TextStyle(color: AppTheme.errorColor)),
+            child: Text(tr('删除'), style: TextStyle(color: AppTheme.errorColor)),
           ),
       ],
     );
@@ -2136,7 +2136,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       child: Row(
         children: [
           _TerminalIconButton(
-            tooltip: '上一级',
+            tooltip: tr('上一级'),
             icon: LucideIcons.cornerLeftUp300,
             size: 26,
             iconSize: 13,
@@ -2157,7 +2157,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
             Padding(
               padding: const EdgeInsets.only(left: 4),
               child: Tooltip(
-                message: '已提权(root)— 点击退出',
+                message: tr('已提权(root)— 点击退出'),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(4),
                   onTap: () {
@@ -2198,7 +2198,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
             )
           else if (widget.onElevate != null)
             _TerminalIconButton(
-              tooltip: '提权(sudo / su root)',
+              tooltip: tr('提权(sudo / su root)'),
               icon: LucideIcons.shieldCheck300,
               size: 26,
               iconSize: 13,
@@ -2259,7 +2259,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
           const SizedBox(width: 4),
           if (_hasCreateActions) _buildCreateMenuButton(),
           _TerminalIconButton(
-            tooltip: _showHidden ? '隐藏隐藏文件' : '显示隐藏文件',
+            tooltip: _showHidden ? tr('隐藏隐藏文件') : tr('显示隐藏文件'),
             icon: _showHidden ? LucideIcons.eye300 : LucideIcons.eyeOff300,
             size: 28,
             iconSize: 14,
@@ -2267,7 +2267,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
             onPressed: () => setState(() => _showHidden = !_showHidden),
           ),
           _TerminalIconButton(
-            tooltip: '刷新',
+            tooltip: tr('刷新'),
             icon: LucideIcons.refreshCw300,
             size: 28,
             iconSize: 14,
@@ -2289,7 +2289,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       width: 28,
       height: 28,
       child: PopupMenuButton<String>(
-        tooltip: '新建 / 上传',
+        tooltip: tr('新建 / 上传'),
         icon: Icon(
           LucideIcons.plus300,
           size: 14,
@@ -2301,13 +2301,13 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         color: AppTheme.surfaceColor,
         itemBuilder: (context) => [
           if (_canTransfer)
-            const PopupMenuItem(value: 'uploadFiles', height: 36, child: Text('上传文件…')),
+            PopupMenuItem(value: 'uploadFiles', height: 36, child: Text(tr('上传文件…'))),
           if (widget.remoteUploadDir != null)
-            const PopupMenuItem(value: 'uploadDir', height: 36, child: Text('上传目录…')),
+            PopupMenuItem(value: 'uploadDir', height: 36, child: Text(tr('上传目录…'))),
           if (_canTransfer)
-            const PopupMenuItem(value: 'newFile', height: 36, child: Text('新建文件')),
+            PopupMenuItem(value: 'newFile', height: 36, child: Text(tr('新建文件'))),
           if (widget.remoteMakeDir != null)
-            const PopupMenuItem(value: 'newDir', height: 36, child: Text('新建文件夹')),
+            PopupMenuItem(value: 'newDir', height: 36, child: Text(tr('新建文件夹'))),
         ],
         onSelected: (v) {
           switch (v) {
@@ -2342,7 +2342,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
             child: Row(
               children: [
                 Text(
-                  running > 0 ? '传输中 $running 项' : '传输记录',
+                  running > 0 ? tr2('传输中 {0} 项', [running]) : tr('传输记录'),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -2358,7 +2358,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
                     ),
                     onPressed: _clearFinishedTransfers,
                     child: Text(
-                      '清除已完成',
+                      tr('清除已完成'),
                       style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.subtleTextColor,
@@ -2398,11 +2398,11 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         ? AppTheme.successColor
         : AppTheme.brandColor;
     final label = transfer.failed
-        ? '失败'
+        ? tr('失败')
         : transfer.cancelled
-        ? '已取消'
+        ? tr('已取消')
         : transfer.done
-        ? '完成'
+        ? tr('完成')
         : '${(transfer.progress * 100).round()}%';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -2452,7 +2452,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
             height: 20,
             child: transfer.running
                 ? IconButton(
-                    tooltip: '取消',
+                    tooltip: tr('取消'),
                     padding: EdgeInsets.zero,
                     splashRadius: 10,
                     icon: Icon(
@@ -2484,7 +2484,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
               ),
               const SizedBox(height: 10),
               Text(
-                '没有权限访问该目录',
+                tr('没有权限访问该目录'),
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
@@ -2493,7 +2493,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
               ),
               const SizedBox(height: 4),
               Text(
-                'SFTP 以登录用户身份运行。提权后可 root 浏览/下载。',
+                tr('SFTP 以登录用户身份运行。提权后可 root 浏览/下载。'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11,
@@ -2509,7 +2509,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
                 ),
                 onPressed: () => unawaited(_elevate()),
                 icon: const Icon(LucideIcons.shieldCheck300, size: 13),
-                label: const Text('提权访问', style: TextStyle(fontSize: 12)),
+                label: Text(tr('提权访问'), style: TextStyle(fontSize: 12)),
               ),
             ],
           ),
@@ -2532,7 +2532,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     if (visible.isEmpty) {
       return _panelMessage(
         LucideIcons.folder300,
-        _query.isEmpty ? '空目录' : '无匹配项',
+        _query.isEmpty ? tr('空目录') : tr('无匹配项'),
       );
     }
     return SlideSelectArea<String>(
@@ -2586,7 +2586,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     final nodes = _selectedNodes;
     if (nodes.isEmpty) return;
     final targetDir = await FilePicker.getDirectoryPath(
-      dialogTitle: '下载 ${nodes.length} 项到…',
+      dialogTitle: tr2('下载 {0} 项到…', [nodes.length]),
       initialDirectory: await FilePickerHelper.getInitialDirectory(),
     );
     if (targetDir == null || targetDir.isEmpty || !mounted) return;
@@ -2613,24 +2613,24 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('删除 ${nodes.length} 项'),
+        title: Text(tr2('删除 {0} 项', [nodes.length])),
         content: Text(
           [
-            '确定删除所选 ${nodes.length} 项吗?',
-            if (dirCount > 0) '(含 $dirCount 个目录,仅能删除空目录)',
+            tr2('确定删除所选 {0} 项吗?', [nodes.length]),
+            if (dirCount > 0) tr2('(含 {0} 个目录,仅能删除空目录)', [dirCount]),
             '\n${nodes.take(8).map((n) => n.name).join('、')}'
-                '${nodes.length > 8 ? ' 等…' : ''}',
+                '${nodes.length > 8 ? tr(' 等…') : ''}',
           ].join(''),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.errorColor),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
+            child: Text(tr('删除')),
           ),
         ],
       ),
@@ -2695,7 +2695,7 @@ class _PanelFileRowState extends State<_PanelFileRow> {
     if (provider == null) return icon;
     // 拖出到 Finder:落点处触发下载(见 _dragItemFor)
     return Tooltip(
-      message: '拖动图标可拖出到 Finder',
+      message: tr('拖动图标可拖出到 Finder'),
       waitDuration: const Duration(milliseconds: 800),
       child: sdd.DragItemWidget(
         allowedOperations: () => [sdd.DropOperation.copy],
@@ -2768,17 +2768,17 @@ class _PanelFileRowState extends State<_PanelFileRow> {
                   if (_hovered) ...[
                     if (widget.onDownload != null)
                       _rowAction(
-                        node.isDir ? '下载目录' : '下载',
+                        node.isDir ? tr('下载目录') : tr('下载'),
                         node.isDir
                             ? LucideIcons.folderDown300
                             : LucideIcons.download300,
                         widget.onDownload!,
                       ),
                     if (widget.onRename != null)
-                      _rowAction('重命名', LucideIcons.penLine300, widget.onRename!),
+                      _rowAction(tr('重命名'), LucideIcons.penLine300, widget.onRename!),
                     if (widget.onDelete != null)
                       _rowAction(
-                        '删除',
+                        tr('删除'),
                         LucideIcons.trash300,
                         widget.onDelete!,
                         color: AppTheme.errorColor,
@@ -3043,7 +3043,7 @@ class _TerminalGitTabState extends State<_TerminalGitTab> {
       );
     }
     if (!_isRepo) {
-      return _panelMessage(LucideIcons.gitBranch300, '当前目录不是 Git 仓库');
+      return _panelMessage(LucideIcons.gitBranch300, tr('当前目录不是 Git 仓库'));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3060,7 +3060,7 @@ class _TerminalGitTabState extends State<_TerminalGitTab> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  _branch.isEmpty ? '(游离 HEAD)' : _branch,
+                  _branch.isEmpty ? tr('(游离 HEAD)') : _branch,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -3071,7 +3071,7 @@ class _TerminalGitTabState extends State<_TerminalGitTab> {
                 ),
               ),
               _TerminalIconButton(
-                tooltip: '刷新',
+                tooltip: tr('刷新'),
                 icon: LucideIcons.refreshCw300,
                 size: 28,
                 iconSize: 14,
@@ -3084,7 +3084,7 @@ class _TerminalGitTabState extends State<_TerminalGitTab> {
         Divider(height: 1, thickness: 1, color: AppTheme.borderColor),
         Expanded(
           child: _entries.isEmpty
-              ? _panelMessage(LucideIcons.gitBranch300, '工作区干净')
+              ? _panelMessage(LucideIcons.gitBranch300, tr('工作区干净'))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   itemCount: _entries.length,

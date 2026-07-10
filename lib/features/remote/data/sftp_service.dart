@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:termora/features/remote/domain/sftp_entry.dart';
 import 'package:termora/features/remote/domain/ssh_host.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 class SftpException implements Exception {
   const SftpException(this.message);
@@ -71,7 +72,7 @@ class SftpService {
         _args(host, tail: ['-b', '-']),
       );
     } catch (error) {
-      throw SftpException('无法启动 sftp: $error');
+      throw SftpException(tr2('无法启动 sftp: {0}', [error]));
     }
     process.stdin.writeln(commands.join('\n'));
     await process.stdin.close();
@@ -88,7 +89,7 @@ class SftpService {
 
   static String _friendlyError(String stderr, String stdout) {
     final raw = stderr.isNotEmpty ? stderr : stdout;
-    final message = raw.isEmpty ? 'sftp 操作失败' : raw;
+    final message = raw.isEmpty ? tr('sftp 操作失败') : raw;
     const needsSession = [
       'Permission denied',
       'Host key verification failed',
@@ -98,8 +99,7 @@ class SftpService {
       'Couldn\'t read packet',
     ];
     if (needsSession.any(message.contains)) {
-      return '$message\n提示:密码登录或首次连接请先在左侧打开该主机的 SSH 会话,'
-          'SFTP 会自动复用已认证连接。';
+      return '$message\n${tr('提示:密码登录或首次连接请先在左侧打开该主机的 SSH 会话,SFTP 会自动复用已认证连接。')}';
     }
     return message;
   }
@@ -175,7 +175,7 @@ class SftpService {
         _args(host, tail: ['-b', '-']),
       );
     } catch (error) {
-      throw SftpException('无法启动 sftp: $error');
+      throw SftpException(tr2('无法启动 sftp: {0}', [error]));
     }
     final handle = SftpTransferHandle._(process);
     process.stdin.writeln(commands.join('\n'));
@@ -292,15 +292,15 @@ class SudoFileService {
     if (s.contains('incorrect password') ||
         s.contains('Sorry, try again') ||
         s.contains('one incorrect password')) {
-      return 'sudo 密码不正确';
+      return tr('sudo 密码不正确');
     }
     if (s.contains('you must have a tty') || s.contains('a terminal is required')) {
-      return '该主机 sudo 需要 tty(requiretty),无法用此方式提权';
+      return tr('该主机 sudo 需要 tty(requiretty),无法用此方式提权');
     }
     if (s.contains('is not in the sudoers') || s.contains('not allowed')) {
-      return '当前用户没有 sudo 权限';
+      return tr('当前用户没有 sudo 权限');
     }
-    return s.isEmpty ? 'sudo 操作失败' : s;
+    return s.isEmpty ? tr('sudo 操作失败') : s;
   }
 
   /// 跑一条提权命令,返回 stdout(文本);失败抛 [SftpException]
@@ -316,7 +316,7 @@ class SudoFileService {
         _sshArgs(host, _sudo(remoteCommand)),
       );
     } catch (error) {
-      throw SftpException('无法启动 ssh: $error');
+      throw SftpException(tr2('无法启动 ssh: {0}', [error]));
     }
     process.stdin.add(utf8.encode('$password\n'));
     unawaited(process.stdin.close());
@@ -332,7 +332,7 @@ class SudoFileService {
   /// 校验密码 / sudo 可用性(以 root 身份返回用户名)
   static Future<void> verify(SshHost host, String password) async {
     final who = (await _execText(host, password, 'id -un')).trim();
-    if (who.isEmpty) throw const SftpException('sudo 提权失败');
+    if (who.isEmpty) throw SftpException(tr('sudo 提权失败'));
   }
 
   static Future<List<SftpEntry>> list(
@@ -410,7 +410,7 @@ class SudoFileService {
         _sshArgs(host, _sudo('cat -- ${_sq(remotePath)}')),
       );
     } catch (error) {
-      throw SftpException('无法启动 ssh: $error');
+      throw SftpException(tr2('无法启动 ssh: {0}', [error]));
     }
     final handle = SftpTransferHandle._(process);
     process.stdin.add(utf8.encode('$password\n'));
@@ -468,7 +468,7 @@ class SudoFileService {
         _sshArgs(host, _sudo('tar -C ${_sq(parent)} -cf - -- ${_sq(name)}')),
       );
     } catch (error) {
-      throw SftpException('无法启动 ssh: $error');
+      throw SftpException(tr2('无法启动 ssh: {0}', [error]));
     }
     final Process localTar;
     try {
@@ -480,7 +480,7 @@ class SudoFileService {
       ]);
     } catch (error) {
       ssh.kill();
-      throw SftpException('无法启动本地 tar: $error');
+      throw SftpException(tr2('无法启动本地 tar: {0}', [error]));
     }
     final handle = SftpTransferHandle._(ssh);
     handle._alsoKillOnCancel(localTar);
@@ -528,7 +528,7 @@ class SudoFileService {
         name,
       ]);
     } catch (error) {
-      throw SftpException('无法启动本地 tar: $error');
+      throw SftpException(tr2('无法启动本地 tar: {0}', [error]));
     }
     final Process ssh;
     try {
@@ -538,7 +538,7 @@ class SudoFileService {
       );
     } catch (error) {
       localTar.kill();
-      throw SftpException('无法启动 ssh: $error');
+      throw SftpException(tr2('无法启动 ssh: {0}', [error]));
     }
     final handle = SftpTransferHandle._(ssh);
     handle._alsoKillOnCancel(localTar);
@@ -578,7 +578,7 @@ class SudoFileService {
         _sshArgs(host, _sudo('tee -- ${_sq(remotePath)} >/dev/null')),
       );
     } catch (error) {
-      throw SftpException('无法启动 ssh: $error');
+      throw SftpException(tr2('无法启动 ssh: {0}', [error]));
     }
     final handle = SftpTransferHandle._(process);
     final errFut = process.stderr.transform(utf8.decoder).join();
@@ -633,12 +633,12 @@ class SuFileService {
     if (s.contains('Authentication failure') ||
         s.contains('incorrect password') ||
         s.contains('Sorry')) {
-      return 'root 密码不正确';
+      return tr('root 密码不正确');
     }
     if (s.contains('su: ') && s.contains('not permitted')) {
-      return 'su 被拒(可能 root 账号被锁或受限)';
+      return tr('su 被拒(可能 root 账号被锁或受限)');
     }
-    return s.trim().isEmpty ? 'su 提权失败' : s.trim();
+    return s.trim().isEmpty ? tr('su 提权失败') : s.trim();
   }
 
   static int _indexOf(List<int> hay, List<int> needle, [int from = 0]) {
@@ -668,7 +668,7 @@ class SuFileService {
     try {
       process = await Process.start('/usr/bin/ssh', _sshTtyArgs(host, remote));
     } catch (error) {
-      throw SftpException('无法启动 ssh: $error');
+      throw SftpException(tr2('无法启动 ssh: {0}', [error]));
     }
 
     final completer = Completer<List<int>>();
@@ -734,7 +734,7 @@ class SuFileService {
   static Future<void> verify(SshHost host, String rootPassword) async {
     final who = (await _suText(host, rootPassword, 'id -un 2>/dev/null')).trim();
     if (!who.contains('root')) {
-      throw const SftpException('su 提权失败(未取得 root)');
+      throw SftpException(tr('su 提权失败(未取得 root)'));
     }
   }
 
@@ -866,7 +866,7 @@ class SuFileService {
         await tar.stdin.close();
         final code = await tar.exitCode;
         if (code != 0 && !handle._cancelled) {
-          throw const SftpException('本地解包失败');
+          throw SftpException(tr('本地解包失败'));
         }
         if (!handle._completer.isCompleted) handle._completer.complete();
       } catch (e) {

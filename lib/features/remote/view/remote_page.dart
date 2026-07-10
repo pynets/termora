@@ -17,6 +17,7 @@ import 'package:termora/features/remote/view/widgets/host_dialog.dart';
 import 'package:termora/features/remote/view/widgets/sftp_browser.dart';
 import 'package:termora/features/remote/view/widgets/tunnel_manager.dart';
 import 'package:termora/features/terminal/view/terminal_page.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 远程主机页 — WindTerm 式布局:
 /// 左侧保存的主机列表,右侧独立的 SSH 终端工作区(与「终端」页完全分离,
@@ -113,10 +114,10 @@ class _RemotePageState extends ConsumerState<RemotePage> {
       setState(
         () => _elevation[hostId] = (password: choice.password, su: choice.su),
       );
-      _toast('已提权(root),现在以 root 浏览/下载', ToastificationType.success);
+      _toast(tr('已提权(root),现在以 root 浏览/下载'), ToastificationType.success);
       return true;
     } on SftpException catch (e) {
-      _toast('提权失败:${e.message}', ToastificationType.error);
+      _toast(tr2('提权失败:{0}', [e.message]), ToastificationType.error);
       return false;
     }
   }
@@ -151,7 +152,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
             borderRadius: BorderRadius.circular(10),
           ),
           title: Text(
-            '提权访问',
+            tr('提权访问'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -176,7 +177,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    hintText: su ? 'root 用户密码' : '当前用户的 sudo 密码',
+                    hintText: su ? tr('root 用户密码') : tr('当前用户的 sudo 密码'),
                     hintStyle: TextStyle(
                       fontSize: 12,
                       color: AppTheme.subtleTextColor.withValues(alpha: 0.7),
@@ -192,8 +193,8 @@ class _RemotePageState extends ConsumerState<RemotePage> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       su
-                          ? 'su : 登录用户不是 sudoer 时使用 root 密码切换(当前支持浏览与下载)'
-                          : 'sudo : 使用当前登录用户密码提权',
+                          ? tr('su : 登录用户不是 sudoer 时使用 root 密码切换(当前支持浏览与下载)')
+                          : tr('sudo : 使用当前登录用户密码提权'),
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.4,
@@ -208,7 +209,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
+              child: Text(tr('取消')),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
@@ -216,7 +217,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
               ),
               onPressed: () => Navigator.of(context)
                   .pop((su: su, password: controller.text)),
-              child: const Text('提权'),
+              child: Text(tr('提权')),
             ),
           ],
         ),
@@ -237,7 +238,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
         children: [
           Expanded(
             child: _buildElevationTabItem(
-              title: 'sudo (推荐)',
+              title: tr('sudo (推荐)'),
               selected: !currentSu,
               icon: LucideIcons.shieldCheck300,
               onTap: () => onChanged(false),
@@ -417,7 +418,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     Future<void> run() async {
       final host = _hostById(hostId);
       if (host == null) {
-        controller.addError('主机不存在');
+        controller.addError(tr('主机不存在'));
         return;
       }
       final dir = await _resolveRemoteDir(host, remoteDir);
@@ -429,7 +430,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
       } catch (_) {}
       final elev = _elevation[hostId];
       if (elev != null && elev.su) {
-        controller.addError('su 提权暂不支持上传,请以 root 登录或用 sudo');
+        controller.addError(tr('su 提权暂不支持上传,请以 root 登录或用 sudo'));
         return;
       }
       handle = elev != null
@@ -483,7 +484,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     Future<void> run() async {
       final host = _hostById(hostId);
       if (host == null) {
-        controller.addError('主机不存在');
+        controller.addError(tr('主机不存在'));
         return;
       }
       final elev = _elevation[hostId];
@@ -570,13 +571,13 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     Future<void> run() async {
       final host = _hostById(hostId);
       if (host == null) {
-        controller.addError('主机不存在');
+        controller.addError(tr('主机不存在'));
         return;
       }
       final dir = await _resolveRemoteDir(host, remoteDir);
       final elev = _elevation[hostId];
       if (elev != null && elev.su) {
-        controller.addError('su 提权暂不支持上传,请以 root 登录或用 sudo');
+        controller.addError(tr('su 提权暂不支持上传,请以 root 登录或用 sudo'));
         return;
       }
       handle = elev != null
@@ -684,12 +685,12 @@ class _RemotePageState extends ConsumerState<RemotePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
             onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('确定'),
+            child: Text(tr('确定')),
           ),
         ],
       ),
@@ -754,7 +755,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     if (chosen == clearTag) {
       await _setHostGroup(host, '');
     } else if (chosen == newTag) {
-      final name = await _promptText('新建分组', hint: '分组名');
+      final name = await _promptText(tr('新建分组'), hint: tr('分组名'));
       if (name != null && name.trim().isNotEmpty) {
         await _setHostGroup(host, name.trim());
       }
@@ -767,17 +768,17 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除主机'),
-        content: Text('确定删除「${host.name}」吗?'),
+        title: Text(tr('删除主机')),
+        content: Text(tr2('确定删除「{0}」吗?', [host.name])),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.errorColor),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
+            child: Text(tr('删除')),
           ),
         ],
       ),
@@ -945,7 +946,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
           const SizedBox(height: 2),
           // 新建主机
           _railButton(
-            tooltip: '新建远程主机',
+            tooltip: tr('新建远程主机'),
             onTap: _addHost,
             child: Icon(
               LucideIcons.plus300,
@@ -1055,8 +1056,8 @@ class _RemotePageState extends ConsumerState<RemotePage> {
   Widget _buildRailToggleButton(List<SshHost> hosts, bool open) {
     return Tooltip(
       message: open
-          ? '收起主机列表'
-          : '展开主机列表${hosts.isNotEmpty ? "(共 ${hosts.length} 台)" : ""}',
+          ? tr('收起主机列表')
+          : tr2('展开主机列表${hosts.isNotEmpty ? "(共 {0} 台)" : ""}', [hosts.length]),
       waitDuration: const Duration(milliseconds: 300),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -1185,7 +1186,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
                 ),
                 const SizedBox(width: 7),
                 Text(
-                  '远程主机',
+                  tr('远程主机'),
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -1215,7 +1216,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
                 ],
                 const Spacer(),
                 IconButton(
-                  tooltip: '新建主机',
+                  tooltip: tr('新建主机'),
                   icon: Icon(
                     LucideIcons.plus300,
                     size: 15,
@@ -1247,7 +1248,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
         style: TextStyle(fontSize: 12.5, color: AppTheme.headingColor),
         decoration: InputDecoration(
           isDense: true,
-          hintText: '搜索主机 / 用户 / 分组',
+          hintText: tr('搜索主机 / 用户 / 分组'),
           hintStyle: TextStyle(
             fontSize: 12,
             color: AppTheme.subtleTextColor.withValues(alpha: 0.7),
@@ -1299,7 +1300,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     if (filtered.isEmpty) {
       return Center(
         child: Text(
-          '没有匹配「$_hostQuery」的主机',
+          tr2('没有匹配「{0}」的主机', [_hostQuery]),
           style: TextStyle(fontSize: 12, color: AppTheme.subtleTextColor),
         ),
       );
@@ -1422,7 +1423,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
           ),
           const SizedBox(height: 10),
           Text(
-            '还没有保存的主机',
+            tr('还没有保存的主机'),
             style: TextStyle(fontSize: 12, color: AppTheme.subtleTextColor),
           ),
           const SizedBox(height: 10),
@@ -1432,7 +1433,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
             ),
             onPressed: _addHost,
             icon: const Icon(LucideIcons.plus300, size: 13),
-            label: const Text('新建主机', style: TextStyle(fontSize: 12)),
+            label: Text(tr('新建主机'), style: TextStyle(fontSize: 12)),
           ),
         ],
       ),
@@ -1530,7 +1531,7 @@ class _HostTileState extends State<_HostTile> {
                   if (_hovered) ...[
                     Builder(
                       builder: (btnContext) => _tileAction(
-                        '移动到分组',
+                        tr('移动到分组'),
                         LucideIcons.folderInput300,
                         () {
                           final box =
@@ -1544,21 +1545,21 @@ class _HostTileState extends State<_HostTile> {
                         },
                       ),
                     ),
-                    _tileAction('编辑', LucideIcons.penLine300, widget.onEdit),
-                    _tileAction('删除', LucideIcons.trash300, widget.onRemove),
+                    _tileAction(tr('编辑'), LucideIcons.penLine300, widget.onEdit),
+                    _tileAction(tr('删除'), LucideIcons.trash300, widget.onRemove),
                     _tileAction(
-                      '端口转发',
+                      tr('端口转发'),
                       LucideIcons.waypoints300,
                       widget.onTunnels,
                     ),
                   ],
                   _tileAction(
-                    '文件(SFTP)',
+                    tr('文件(SFTP)'),
                     LucideIcons.folder300,
                     widget.onBrowseFiles,
                   ),
                   _tileAction(
-                    '连接',
+                    tr('连接'),
                     LucideIcons.play300,
                     widget.onConnect,
                     color: AppTheme.brandColor,

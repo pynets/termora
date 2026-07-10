@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// markdown 编辑操作 — 对 TextEditingValue 做纯函数变换,
 /// 工具栏按钮与快捷键共用,便于单测。
@@ -197,11 +198,11 @@ class MarkdownEditing {
 
   /// 链接:有选区 → [选区](url) 并选中 url 占位;无选区 → 完整占位
   static TextEditingValue insertLink(TextEditingValue value) =>
-      _insertWrapped(value, '[', '](url)', placeholder: '链接文字', target: 'url');
+      _insertWrapped(value, '[', '](url)', placeholder: tr('链接文字'), target: 'url');
 
   /// 图片:alt 用选区或占位,并选中地址占位
   static TextEditingValue insertImage(TextEditingValue value) =>
-      _insertWrapped(value, '![', '](图片地址)', placeholder: '描述', target: '图片地址');
+      _insertWrapped(value, '![', tr('](图片地址)'), placeholder: tr('描述'), target: tr('图片地址'));
 
   static TextEditingValue _insertWrapped(
     TextEditingValue value,

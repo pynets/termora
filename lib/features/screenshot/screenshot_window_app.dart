@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 import 'package:termora/features/screenshot/screenshot_editor.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 截屏编辑器独立窗口应用
 /// 由 desktop_multi_window 创建的子窗口，运行截屏编辑器
@@ -42,7 +43,7 @@ class _ScreenshotWindowAppState extends State<ScreenshotWindowApp> {
       final file = File(widget.imagePath);
       if (!await file.exists()) {
         setState(() {
-          _error = '截图文件不存在: ${widget.imagePath}';
+          _error = tr2('截图文件不存在: {0}', [widget.imagePath]);
           _isLoading = false;
         });
         _presentWindowAfterFirstFrame();
@@ -59,7 +60,7 @@ class _ScreenshotWindowAppState extends State<ScreenshotWindowApp> {
       });
     } catch (e) {
       setState(() {
-        _error = '加载截图失败: $e';
+        _error = tr2('加载截图失败: {0}', [e]);
         _isLoading = false;
       });
     }
@@ -78,7 +79,7 @@ class _ScreenshotWindowAppState extends State<ScreenshotWindowApp> {
         try {
           await channel.invokeMethod('presentEditor');
         } catch (e) {
-          debugPrint('presentEditor 调用失败，回退到 controller.show(): $e');
+          debugPrint(tr2('presentEditor 调用失败，回退到 controller.show(): {0}', [e]));
           try {
             await widget.windowController.show();
           } catch (_) {}
@@ -98,7 +99,7 @@ class _ScreenshotWindowAppState extends State<ScreenshotWindowApp> {
       // 1. 先将窗口隐藏，避免在 engine 销毁时 VSync 继续触发导致底层的 clamping frame time 报错
       await widget.windowController.hide();
     } catch (e) {
-      debugPrint('隐藏截屏窗口失败: $e');
+      debugPrint(tr2('隐藏截屏窗口失败: {0}', [e]));
     }
 
     try {
@@ -106,7 +107,7 @@ class _ScreenshotWindowAppState extends State<ScreenshotWindowApp> {
       const channel = MethodChannel('com.hxlive.termora/screenshot_window');
       await channel.invokeMethod('close');
     } catch (e) {
-      debugPrint('原生通道关闭截屏窗口失败: $e');
+      debugPrint(tr2('原生通道关闭截屏窗口失败: {0}', [e]));
     }
   }
 
@@ -125,7 +126,7 @@ class _ScreenshotWindowAppState extends State<ScreenshotWindowApp> {
       final channel = const WindowMethodChannel('screenshot_result');
       await channel.invokeMethod(action, resultPath);
     } catch (e) {
-      debugPrint('发送截屏结果失败: $e');
+      debugPrint(tr2('发送截屏结果失败: {0}', [e]));
     }
   }
 
@@ -150,11 +151,11 @@ class _ScreenshotWindowAppState extends State<ScreenshotWindowApp> {
               const Icon(Icons.error_outline, color: Colors.red, size: 48),
               const SizedBox(height: 16),
               Text(
-                _error ?? '未知错误',
+                _error ?? tr('未知错误'),
                 style: const TextStyle(color: Colors.white, fontSize: 16),
               ),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: _closeWindow, child: const Text('关闭')),
+              ElevatedButton(onPressed: _closeWindow, child: Text(tr('关闭'))),
             ],
           ),
         ),

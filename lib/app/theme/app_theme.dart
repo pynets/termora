@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 class _FadePageTransitionsBuilder extends PageTransitionsBuilder {
   const _FadePageTransitionsBuilder();
@@ -127,7 +128,10 @@ enum AppBrandColor {
     Color(0xFF525847),
   );
 
-  final String label;
+  final String labelZh;
+
+  /// 展示名(查表翻译;数据本体保持中文作 key)
+  String get label => AppL10n.tr(labelZh);
   final Color lightBrandColor;
   final Color lightSoftBrandColor;
   final Color lightUserBubbleColor;
@@ -136,7 +140,7 @@ enum AppBrandColor {
   final Color darkUserBubbleColor;
 
   const AppBrandColor(
-    this.label,
+    this.labelZh,
     this.lightBrandColor,
     this.lightSoftBrandColor,
     this.lightUserBubbleColor,

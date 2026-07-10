@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/widgets/glass_menu.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 查询结果网格 — dbeaver 式累积编辑:
 /// 双向滚动、斑马纹、行悬停、列分隔线;编辑写入 [edits] 缓冲(脏格高亮),
@@ -613,17 +614,17 @@ class _DbDataGridState extends State<DbDataGrid> {
       context: context,
       position: position,
       items: [
-        const PopupMenuItem(value: 'copy', height: 36, child: Text('复制值', style: TextStyle(fontSize: 13))),
-        const PopupMenuItem(value: 'copy_row', height: 36, child: Text('复制整行(CSV)', style: TextStyle(fontSize: 13))),
+        PopupMenuItem(value: 'copy', height: 36, child: Text(tr('复制值'), style: TextStyle(fontSize: 13))),
+        PopupMenuItem(value: 'copy_row', height: 36, child: Text(tr('复制整行(CSV)'), style: TextStyle(fontSize: 13))),
         if (widget.editable) ...[
           const PopupMenuDivider(),
-          const PopupMenuItem(value: 'edit', height: 36, child: Text('编辑', style: TextStyle(fontSize: 13))),
-          const PopupMenuItem(value: 'set_null', height: 36, child: Text('设为 NULL', style: TextStyle(fontSize: 13))),
+          PopupMenuItem(value: 'edit', height: 36, child: Text(tr('编辑'), style: TextStyle(fontSize: 13))),
+          PopupMenuItem(value: 'set_null', height: 36, child: Text(tr('设为 NULL'), style: TextStyle(fontSize: 13))),
           PopupMenuItem(
             value: 'delete',
             height: 36,
             child: Text(
-              _isRemoved(r) ? '恢复此行' : '标记删除此行',
+              _isRemoved(r) ? tr('恢复此行') : tr('标记删除此行'),
               style: const TextStyle(fontSize: 13),
             ),
           ),

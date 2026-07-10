@@ -27,6 +27,7 @@ import 'package:termora/features/notes/view/widgets/editor_decorations.dart';
 import 'package:termora/features/notes/view/widgets/editor_toolbar.dart';
 import 'package:termora/features/notes/view/widgets/markdown_editing_controller.dart';
 import 'package:termora/features/notes/view/widgets/markdown_preview.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 编辑视图模式。blocks 追加在末尾保证旧的持久化下标依然有效:
 /// edit = 源码所见即所得;blocks = 块式自绘编辑(真表格/真图片);preview = 只读成品
@@ -254,7 +255,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     if (count == 0) return;
     _editorController.value = value;
     _refreshFind(resetActive: true);
-    _toast('已替换 $count 处');
+    _toast(tr2('已替换 {0} 处', [count]));
   }
 
   void _toggleOutline() {
@@ -441,7 +442,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Future<void> _exportNote(Note note, String extension) async {
     final safeName = note.title.replaceAll(RegExp(r'[/\\:*?"<>|]'), '-');
     final path = await FilePicker.saveFile(
-      dialogTitle: '导出笔记',
+      dialogTitle: tr('导出笔记'),
       fileName: '$safeName.$extension',
     );
     if (path == null) return;
@@ -456,9 +457,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       };
       await File(finalPath).writeAsBytes(bytes);
       FilePickerHelper.updateLastDirectory(finalPath);
-      _toast('已导出到 $finalPath');
+      _toast(tr2('已导出到 {0}', [finalPath]));
     } catch (e) {
-      _toast('导出失败: $e');
+      _toast(tr2('导出失败: {0}', [e]));
     }
   }
 
@@ -487,12 +488,12 @@ class _NotesPageState extends ConsumerState<NotesPage> {
 
   /// 选择图片文件 → 复制到笔记资源目录 → 光标处插入图片语法
   Future<void> _pickAndInsertImage() => _pickAndImport(
-    dialogTitle: '插入图片',
+    dialogTitle: tr('插入图片'),
     allowedExtensions: const ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'],
   );
 
   /// 选择视频/任意文件 → 复制进资源目录 → 插入附件链接(预览成卡片)
-  Future<void> _pickAndInsertFile() => _pickAndImport(dialogTitle: '插入文件');
+  Future<void> _pickAndInsertFile() => _pickAndImport(dialogTitle: tr('插入文件'));
 
   Future<void> _pickAndImport({
     required String dialogTitle,
@@ -520,7 +521,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       _applyShortcut((v) => MarkdownEditing.insertStoredAssets(v, assets));
       _editorFocus.requestFocus();
     } catch (e) {
-      _toast('插入失败: $e');
+      _toast(tr2('插入失败: {0}', [e]));
     }
   }
 
@@ -542,7 +543,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Future<void> _importNotes() async {
     final initialDirectory = await FilePickerHelper.getInitialDirectory();
     final result = await FilePicker.pickFiles(
-      dialogTitle: '导入 Markdown',
+      dialogTitle: tr('导入 Markdown'),
       initialDirectory: initialDirectory,
       allowMultiple: true,
       type: FileType.custom,
@@ -565,7 +566,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     }
     if (imported > 0) {
       await controller.flush();
-      _toast('已导入 $imported 篇笔记');
+      _toast(tr2('已导入 {0} 篇笔记', [imported]));
     }
   }
 
@@ -573,16 +574,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除笔记'),
-        content: Text('确定删除「${note.title}」吗?此操作不可恢复。'),
+        title: Text(tr('删除笔记')),
+        content: Text(tr2('确定删除「{0}」吗?此操作不可恢复。', [note.title])),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text('删除', style: TextStyle(color: AppTheme.errorColor)),
+            child: Text(tr('删除'), style: TextStyle(color: AppTheme.errorColor)),
           ),
         ],
       ),
@@ -638,7 +639,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 Flexible(child: _buildNotebookSwitcher(state)),
                 const Spacer(),
                 IconButton(
-                  tooltip: '导入 Markdown',
+                  tooltip: tr('导入 Markdown'),
                   icon: Icon(
                     LucideIcons.fileDown,
                     size: 16,
@@ -647,7 +648,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   onPressed: _importNotes,
                 ),
                 IconButton(
-                  tooltip: '新建笔记',
+                  tooltip: tr('新建笔记'),
                   icon: Icon(
                     LucideIcons.squarePen,
                     size: 17,
@@ -665,7 +666,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               onChanged: (v) => ref.read(notesProvider.notifier).setQuery(v),
               style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
               decoration: InputDecoration(
-                hintText: '搜索笔记…',
+                hintText: tr('搜索笔记…'),
                 hintStyle: TextStyle(
                   fontSize: 13,
                   color: AppTheme.subtleTextColor,
@@ -718,7 +719,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Widget _buildNotebookSwitcher(NotesState state) {
     final active = state.activeNotebook;
     return PopupMenuButton<String>(
-      tooltip: '切换笔记本',
+      tooltip: tr('切换笔记本'),
       position: PopupMenuPosition.under,
       onSelected: (value) => _onNotebookAction(value, state),
       itemBuilder: (context) {
@@ -786,7 +787,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         return [
           entry(
             '__all__',
-            '全部笔记',
+            tr('全部笔记'),
             state.countIn(null),
             checked: active == null,
           ),
@@ -798,10 +799,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               checked: nb.id == active?.id,
             ),
           const PopupMenuDivider(),
-          action('__create__', LucideIcons.folderPlus, '新建笔记本…'),
+          action('__create__', LucideIcons.folderPlus, tr('新建笔记本…')),
           if (active != null) ...[
-            action('__rename__', LucideIcons.pencil, '重命名「${active.name}」…'),
-            action('__delete__', LucideIcons.trash2, '删除「${active.name}」'),
+            action('__rename__', LucideIcons.pencil, tr2('重命名「{0}」…', [active.name])),
+            action('__delete__', LucideIcons.trash2, tr2('删除「{0}」', [active.name])),
           ],
         ];
       },
@@ -818,7 +819,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              active?.name ?? '全部笔记',
+              active?.name ?? tr('全部笔记'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -850,7 +851,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       case '__all__':
         controller.setActiveNotebook(null);
       case '__create__':
-        final name = await _promptNotebookName(title: '新建笔记本');
+        final name = await _promptNotebookName(title: tr('新建笔记本'));
         if (name != null && name.trim().isNotEmpty) {
           controller.createNotebook(name);
         }
@@ -858,7 +859,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         final active = state.activeNotebook;
         if (active == null) return;
         final name = await _promptNotebookName(
-          title: '重命名笔记本',
+          title: tr('重命名笔记本'),
           initial: active.name,
         );
         if (name != null && name.trim().isNotEmpty) {
@@ -870,16 +871,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('删除笔记本'),
-            content: Text('删除「${active.name}」?其中的笔记会移回「全部笔记」,不会被删除。'),
+            title: Text(tr('删除笔记本')),
+            content: Text(tr2('删除「{0}」?其中的笔记会移回「全部笔记」,不会被删除。', [active.name])),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('取消'),
+                child: Text(tr('取消')),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: Text('删除', style: TextStyle(color: AppTheme.errorColor)),
+                child: Text(tr('删除'), style: TextStyle(color: AppTheme.errorColor)),
               ),
             ],
           ),
@@ -903,17 +904,17 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           controller: controller,
           autofocus: true,
           style: TextStyle(fontSize: 13.5, color: AppTheme.headingColor),
-          decoration: const InputDecoration(hintText: '笔记本名称'),
+          decoration: InputDecoration(hintText: tr('笔记本名称')),
           onSubmitted: (value) => Navigator.of(context).pop(value),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('确定'),
+            child: Text(tr('确定')),
           ),
         ],
       ),
@@ -928,7 +929,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final searching = state.query.trim().isNotEmpty;
     return Center(
       child: Text(
-        searching ? '没有匹配的笔记' : '还没有笔记\n点右上角新建一篇',
+        searching ? tr('没有匹配的笔记') : '还没有笔记\n点右上角新建一篇',
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 12.5,
@@ -965,7 +966,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '选择或新建一篇笔记,用 Markdown 记录',
+                    tr('选择或新建一篇笔记,用 Markdown 记录'),
                     style: TextStyle(
                       fontSize: 13,
                       color: AppTheme.subtleTextColor,
@@ -1008,7 +1009,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Widget _buildFindBar() {
     final total = _findMatches.length;
     final counter = total == 0
-        ? (_findController.text.isEmpty ? '' : '无结果')
+        ? (_findController.text.isEmpty ? '' : tr('无结果'))
         : '${_activeMatch + 1}/$total';
 
     InputDecoration decoration(String hint) => InputDecoration(
@@ -1053,7 +1054,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               controller: _findController,
               focusNode: _findFocus,
               style: TextStyle(fontSize: 12.5, color: AppTheme.headingColor),
-              decoration: decoration('查找…'),
+              decoration: decoration(tr('查找…')),
               onChanged: (_) => _refreshFind(resetActive: true, reveal: true),
               onSubmitted: (_) {
                 _stepMatch(1);
@@ -1063,7 +1064,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             final replaceField = TextField(
               controller: _replaceController,
               style: TextStyle(fontSize: 12.5, color: AppTheme.headingColor),
-              decoration: decoration('替换为…'),
+              decoration: decoration(tr('替换为…')),
               onSubmitted: (_) => _replaceActive(),
             );
 
@@ -1091,12 +1092,12 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               ),
               iconButton(
                 LucideIcons.chevronUp,
-                '上一个',
+                tr('上一个'),
                 total > 0 ? () => _stepMatch(-1) : null,
               ),
               iconButton(
                 LucideIcons.chevronDown,
-                '下一个',
+                tr('下一个'),
                 total > 0 ? () => _stepMatch(1) : null,
               ),
               const SizedBox(width: 8),
@@ -1106,13 +1107,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               const SizedBox(width: 4),
               TextButton(
                 onPressed: total > 0 ? _replaceActive : null,
-                child: const Text('替换', style: TextStyle(fontSize: 12)),
+                child: Text(tr('替换'), style: TextStyle(fontSize: 12)),
               ),
               TextButton(
                 onPressed: total > 0 ? _replaceAllMatches : null,
-                child: const Text('全部替换', style: TextStyle(fontSize: 12)),
+                child: Text(tr('全部替换'), style: TextStyle(fontSize: 12)),
               ),
-              iconButton(LucideIcons.x, '关闭 (Esc)', _closeFind),
+              iconButton(LucideIcons.x, tr('关闭 (Esc)'), _closeFind),
             ];
 
             if (isNarrow) {
@@ -1139,7 +1140,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       child: entries.isEmpty
           ? Center(
               child: Text(
-                '暂无标题',
+                tr('暂无标题'),
                 style: TextStyle(
                   fontSize: 12,
                   color: AppTheme.subtleTextColor,
@@ -1194,7 +1195,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   /// 收起/展开左侧列表(标题栏与空态页共用)
   Widget _sidebarToggleButton() {
     return IconButton(
-      tooltip: _showSidebar ? '收起列表 (⌘J)' : '展开列表 (⌘J)',
+      tooltip: _showSidebar ? tr('收起列表 (⌘J)') : tr('展开列表 (⌘J)'),
       visualDensity: VisualDensity.compact,
       icon: Icon(
         _showSidebar ? LucideIcons.panelLeftClose : LucideIcons.panelLeftOpen,
@@ -1235,7 +1236,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '${Note.wordCount(note.content)} 字',
+                    tr2('{0} 字', [Note.wordCount(note.content)]),
                     style: TextStyle(
                       fontSize: 11.5,
                       color: AppTheme.subtleTextColor,
@@ -1244,7 +1245,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   ),
                   const SizedBox(width: 4),
                   IconButton(
-                    tooltip: '聚焦模式(段落外淡化)',
+                    tooltip: tr('聚焦模式(段落外淡化)'),
                     visualDensity: VisualDensity.compact,
                     icon: Icon(
                       LucideIcons.focus,
@@ -1256,7 +1257,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     onPressed: _toggleFocusMode,
                   ),
                   IconButton(
-                    tooltip: '打字机模式(光标行居中)',
+                    tooltip: tr('打字机模式(光标行居中)'),
                     visualDensity: VisualDensity.compact,
                     icon: Icon(
                       LucideIcons.keyboard,
@@ -1268,7 +1269,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     onPressed: _toggleTypewriter,
                   ),
                   IconButton(
-                    tooltip: '查找替换 (⌘F)',
+                    tooltip: tr('查找替换 (⌘F)'),
                     visualDensity: VisualDensity.compact,
                     icon: Icon(
                       LucideIcons.textSearch,
@@ -1281,7 +1282,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     onPressed: _showFind ? _closeFind : _openFind,
                   ),
                   IconButton(
-                    tooltip: '大纲',
+                    tooltip: tr('大纲'),
                     visualDensity: VisualDensity.compact,
                     icon: Icon(
                       LucideIcons.tableOfContents,
@@ -1294,7 +1295,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     onPressed: _toggleOutline,
                   ),
                   PopupMenuButton<String>(
-                    tooltip: '导出',
+                    tooltip: tr('导出'),
                     position: PopupMenuPosition.under,
                     onSelected: (ext) => _exportNote(note, ext),
                     itemBuilder: (context) => [
@@ -1432,7 +1433,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             );
             _editorFocus.requestFocus();
           } catch (e) {
-            _toast('插入失败: $e');
+            _toast(tr2('插入失败: {0}', [e]));
           }
         },
         // 版心居中(宽度最高 760)靠 contentPadding 实现,但那会把 TextField
@@ -1614,8 +1615,8 @@ class _NoteListTileState extends State<_NoteListTile> {
     final day = DateTime(time.year, time.month, time.day);
     String two(int n) => n.toString().padLeft(2, '0');
     if (day == today) return '${two(time.hour)}:${two(time.minute)}';
-    if (day == today.subtract(const Duration(days: 1))) return '昨天';
-    if (time.year == now.year) return '${time.month}月${time.day}日';
+    if (day == today.subtract(Duration(days: 1))) return tr('昨天');
+    if (time.year == now.year) return tr2('{0}月{1}日', [time.month, time.day]);
     return '${time.year}/${two(time.month)}/${two(time.day)}';
   }
 
@@ -1730,7 +1731,7 @@ class _NoteListTileState extends State<_NoteListTile> {
     }
 
     return PopupMenuButton<String>(
-      tooltip: '更多',
+      tooltip: tr('更多'),
       position: PopupMenuPosition.under,
       onOpened: () => setState(() => _menuOpen = true),
       onCanceled: () => setState(() => _menuOpen = false),
@@ -1751,18 +1752,18 @@ class _NoteListTileState extends State<_NoteListTile> {
         item(
           '__pin__',
           note.pinned ? LucideIcons.pinOff : LucideIcons.pin,
-          note.pinned ? '取消置顶' : '置顶',
+          note.pinned ? tr('取消置顶') : tr('置顶'),
         ),
         if (widget.notebooks.isNotEmpty) ...[
           const PopupMenuDivider(),
           for (final nb in widget.notebooks)
             if (nb.id != note.notebookId)
-              item(nb.id, LucideIcons.folderInput, '移动到「${nb.name}」'),
+              item(nb.id, LucideIcons.folderInput, tr2('移动到「{0}」', [nb.name])),
           if (note.notebookId != null)
-            item('__ungroup__', LucideIcons.folderInput, '移出笔记本'),
+            item('__ungroup__', LucideIcons.folderInput, tr('移出笔记本')),
         ],
         const PopupMenuDivider(),
-        item('__delete__', LucideIcons.trash2, '删除'),
+        item('__delete__', LucideIcons.trash2, tr('删除')),
       ],
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),

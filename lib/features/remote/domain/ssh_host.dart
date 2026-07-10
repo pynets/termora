@@ -1,3 +1,4 @@
+import 'package:termora/core/l10n/app_l10n.dart';
 /// 一条已保存的 SSH 主机配置(WindTerm 式会话管理器的最小字段集)
 class SshHost {
   const SshHost({
@@ -88,7 +89,7 @@ class SshHost {
 
   factory SshHost.fromJson(Map<String, dynamic> json) => SshHost(
     id: json['id'] as String,
-    name: json['name'] as String? ?? '未命名主机',
+    name: json['name'] as String? ?? tr('未命名主机'),
     host: json['host'] as String? ?? '',
     port: (json['port'] as num?)?.toInt() ?? 22,
     user: json['user'] as String? ?? '',

@@ -11,6 +11,7 @@ import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:termora/core/services/screenshot_service.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 系统托盘服务(常驻小羊图标)
 ///
@@ -67,7 +68,7 @@ class TrayService with TrayListener, WindowListener {
       } catch (e) {
         _supportsLaunchAtStartup = false;
         if (kDebugMode) {
-          debugPrint('LaunchAtStartup 不可用，已自动禁用该功能: $e');
+          debugPrint(tr2('LaunchAtStartup 不可用，已自动禁用该功能: {0}', [e]));
         }
       }
 
@@ -97,7 +98,7 @@ class TrayService with TrayListener, WindowListener {
       mode: ChannelMode.unidirectional,
     );
     channel.setMethodCallHandler((call) async {
-      if (kDebugMode) debugPrint('收到截屏结果: ${call.method}');
+      if (kDebugMode) debugPrint(tr2('收到截屏结果: {0}', [call.method]));
       _screenshotWindowController = null;
 
       Uint8List? resultData;
@@ -168,13 +169,13 @@ class TrayService with TrayListener, WindowListener {
 
   Future<void> _updateTrayMenu() async {
     final items = <MenuItem>[
-      MenuItem(key: 'show_window', label: '显示窗口'),
+      MenuItem(key: 'show_window', label: tr('显示窗口')),
       MenuItem.separator(),
-      MenuItem(key: 'screenshot', label: '截屏 (⌥+Shift+X)'),
+      MenuItem(key: 'screenshot', label: tr('截屏 (⌥+Shift+X)')),
       MenuItem.separator(),
       MenuItem.checkbox(
         key: 'always_on_top',
-        label: '窗口置顶',
+        label: tr('窗口置顶'),
         checked: _alwaysOnTop,
       ),
     ];
@@ -183,7 +184,7 @@ class TrayService with TrayListener, WindowListener {
       items.add(
         MenuItem.checkbox(
           key: 'launch_at_startup',
-          label: '开机自启动',
+          label: tr('开机自启动'),
           checked: _launchAtStartup,
         ),
       );
@@ -191,7 +192,7 @@ class TrayService with TrayListener, WindowListener {
 
     items
       ..add(MenuItem.separator())
-      ..add(MenuItem(key: 'quit', label: '退出'));
+      ..add(MenuItem(key: 'quit', label: tr('退出')));
 
     final menu = Menu(items: items);
     await trayManager.setContextMenu(menu);
@@ -212,17 +213,17 @@ class TrayService with TrayListener, WindowListener {
       await hotKeyManager.register(
         _screenshotHotKey!,
         keyDownHandler: (hotKey) {
-          if (kDebugMode) debugPrint('截屏快捷键触发');
+          if (kDebugMode) debugPrint(tr('截屏快捷键触发'));
           // 清空键盘状态记录，防止全局快捷键(修饰键)触发时导致 Flutter 键盘状态不同步报错
           HardwareKeyboard.instance.clearState();
           takeScreenshot();
         },
       );
       if (kDebugMode) {
-        debugPrint('截屏快捷键注册成功: ⌥+Shift+X (${_screenshotHotKey!.debugName})');
+        debugPrint(tr2('截屏快捷键注册成功: ⌥+Shift+X ({0})', [_screenshotHotKey!.debugName]));
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('注册截屏快捷键失败: $e');
+      if (kDebugMode) debugPrint(tr2('注册截屏快捷键失败: {0}', [e]));
     }
   }
 
@@ -238,7 +239,7 @@ class TrayService with TrayListener, WindowListener {
           (w) => w.windowId == _screenshotWindowController!.windowId,
         );
         if (stillExists) {
-          if (kDebugMode) debugPrint('截屏窗口已存在，跳过');
+          if (kDebugMode) debugPrint(tr('截屏窗口已存在，跳过'));
           return;
         }
       } catch (_) {}
@@ -258,10 +259,10 @@ class TrayService with TrayListener, WindowListener {
       final imagePath = results[0] as String?;
       final windowList = results[1] as List<WindowBounds>;
 
-      if (kDebugMode) debugPrint('窗口列表获取完成: ${windowList.length} 个窗口');
+      if (kDebugMode) debugPrint(tr2('窗口列表获取完成: {0} 个窗口', [windowList.length]));
 
       if (imagePath == null) {
-        if (kDebugMode) debugPrint('截屏失败: 无法获取截图');
+        if (kDebugMode) debugPrint(tr('截屏失败: 无法获取截图'));
         return;
       }
 
@@ -290,15 +291,15 @@ class TrayService with TrayListener, WindowListener {
 
       _screenshotWindowController = controller;
 
-      if (kDebugMode) debugPrint('截屏编辑器窗口已创建: ${controller.windowId}');
+      if (kDebugMode) debugPrint(tr2('截屏编辑器窗口已创建: {0}', [controller.windowId]));
     } on ScreenshotPermissionException catch (e) {
-      debugPrint('截屏权限异常: $e');
+      debugPrint(tr2('截屏权限异常: {0}', [e]));
       await showMessageNotification(
-        title: '需要屏幕录制权限',
-        body: '请在“系统设置 > 隐私与安全性 > 屏幕录制”中允许本应用，以捕获其他窗口。',
+        title: tr('需要屏幕录制权限'),
+        body: tr('请在“系统设置 > 隐私与安全性 > 屏幕录制”中允许本应用，以捕获其他窗口。'),
       );
     } catch (e) {
-      if (kDebugMode) debugPrint('截屏失败: $e');
+      if (kDebugMode) debugPrint(tr2('截屏失败: {0}', [e]));
       _screenshotWindowController = null;
     }
   }
@@ -308,13 +309,13 @@ class TrayService with TrayListener, WindowListener {
     try {
       final screenshotService = ScreenshotService();
       final path = await screenshotService.saveScreenshot(imageData);
-      if (kDebugMode) debugPrint('编辑后截图已保存: $path');
+      if (kDebugMode) debugPrint(tr2('编辑后截图已保存: {0}', [path]));
 
-      await showMessageNotification(title: 'Termora', body: '截图已保存');
+      await showMessageNotification(title: 'Termora', body: tr('截图已保存'));
 
       onScreenshotComplete?.call(path);
     } catch (e) {
-      if (kDebugMode) debugPrint('保存截图失败: $e');
+      if (kDebugMode) debugPrint(tr2('保存截图失败: {0}', [e]));
     }
   }
 
@@ -336,9 +337,9 @@ class TrayService with TrayListener, WindowListener {
 
       _pinWindows.add(controller);
 
-      if (kDebugMode) debugPrint('贴图浮窗已创建: ${controller.windowId}');
+      if (kDebugMode) debugPrint(tr2('贴图浮窗已创建: {0}', [controller.windowId]));
     } catch (e) {
-      if (kDebugMode) debugPrint('创建贴图浮窗失败: $e');
+      if (kDebugMode) debugPrint(tr2('创建贴图浮窗失败: {0}', [e]));
     }
   }
 
@@ -354,7 +355,7 @@ class TrayService with TrayListener, WindowListener {
       _launchAtStartup = enabled;
       await _updateTrayMenu();
     } catch (e) {
-      if (kDebugMode) debugPrint('设置开机自启动失败 (调试模式下正常): $e');
+      if (kDebugMode) debugPrint(tr2('设置开机自启动失败 (调试模式下正常): {0}', [e]));
     }
   }
 
@@ -398,7 +399,7 @@ class TrayService with TrayListener, WindowListener {
     await _notificationsPlugin.initialize(
       settings: initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        if (kDebugMode) debugPrint('通知被点击: ${response.payload}');
+        if (kDebugMode) debugPrint(tr2('通知被点击: {0}', [response.payload]));
         _showWindow();
       },
     );
@@ -468,7 +469,7 @@ class TrayService with TrayListener, WindowListener {
     try {
       await _notificationsPlugin.cancelAll();
     } catch (e) {
-      if (kDebugMode) debugPrint('清除通知失败: $e');
+      if (kDebugMode) debugPrint(tr2('清除通知失败: {0}', [e]));
     }
   }
 

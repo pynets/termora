@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:termora/features/remote/domain/ssh_host.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 enum TunnelType {
   local, // -L 本地转发:本地端口 → 经服务器 → 目标
@@ -65,9 +66,9 @@ class SshTunnel {
   String get typeLabel {
     switch (type) {
       case TunnelType.local:
-        return '本地 -L';
+        return tr('本地 -L');
       case TunnelType.remote:
-        return '远程 -R';
+        return tr('远程 -R');
       case TunnelType.dynamic:
         return 'SOCKS -D';
     }
@@ -76,11 +77,11 @@ class SshTunnel {
   String get summary {
     switch (type) {
       case TunnelType.local:
-        return '本地 $_bindPrefix$bindPort → $destHost:$destPort';
+        return tr2('本地 {0}{1} → {2}:{3}', [_bindPrefix, bindPort, destHost, destPort]);
       case TunnelType.remote:
-        return '服务器 $_bindPrefix$bindPort → $destHost:$destPort';
+        return tr2('服务器 {0}{1} → {2}:{3}', [_bindPrefix, bindPort, destHost, destPort]);
       case TunnelType.dynamic:
-        return 'SOCKS 代理 $_bindPrefix$bindPort';
+        return tr2('SOCKS 代理 {0}{1}', [_bindPrefix, bindPort]);
     }
   }
 
@@ -217,7 +218,7 @@ class TunnelService {
     try {
       process = await Process.start('/usr/bin/ssh', _args(host, tunnel));
     } catch (e) {
-      _setError(tunnel.id, '无法启动 ssh: $e');
+      _setError(tunnel.id, tr2('无法启动 ssh: {0}', [e]));
       return;
     }
     _running[tunnel.id] = process;
@@ -233,7 +234,7 @@ class TunnelService {
         _setError(
           tunnel.id,
           err.isEmpty
-              ? '转发退出(码 $code)。请先连接该主机的 SSH 会话(复用已认证连接)。'
+              ? tr2('转发退出(码 {0})。请先连接该主机的 SSH 会话(复用已认证连接)。', [code])
               : err,
         );
       }

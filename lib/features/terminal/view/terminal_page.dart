@@ -34,6 +34,7 @@ import 'package:termora/features/terminal/view/widgets/link_matcher_manager.dart
 import 'package:termora/features/terminal/view/widgets/highlight_manager.dart';
 import 'package:termora/core/widgets/app_toast.dart';
 import 'package:toastification/toastification.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 part '../domain/terminal_models.dart';
 part 'terminal_emulator.dart';
@@ -945,7 +946,7 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
           // 远程工作区的新会话只能从主机列表发起,不提供裸加号(会开成本地 shell)
           if (!widget.remoteWorkspace)
             _TerminalIconButton(
-              tooltip: '新建会话',
+              tooltip: tr('新建会话'),
               icon: LucideIcons.plus300,
               size: 30,
               iconSize: 16,
@@ -973,7 +974,7 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
               ),
               const SizedBox(height: 12),
               Text(
-                widget.emptyHint.isEmpty ? '暂无会话' : widget.emptyHint,
+                widget.emptyHint.isEmpty ? tr('暂无会话') : widget.emptyHint,
                 style: TextStyle(fontSize: 13, color: AppTheme.subtleTextColor),
               ),
             ],
@@ -1337,7 +1338,7 @@ class _TerminalSessionDescriptor {
   /// Tracks the latest known CWD for session persistence.
   String? lastKnownCwd;
 
-  String get title => remoteTitle ?? '终端 $id';
+  String get title => remoteTitle ?? tr2('终端 {0}', [id]);
   String get providerKey => '${keyPrefix}_$id';
 }
 
@@ -1844,7 +1845,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     final command = widget.remoteCommand;
     if (command == null || command.isEmpty) return;
     if (!widget.autoConnect) {
-      _appendLine('未连接。按回车重新连接。', TerminalLineType.system);
+      _appendLine(tr('未连接。按回车重新连接。'), TerminalLineType.system);
       return;
     }
     widget.onAutoConnectConsumed?.call();
@@ -1863,13 +1864,13 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   void _appendExitLine(int exitCode) {
     if (_isRemoteSession) {
       _appendLine(
-        exitCode == 0 ? '连接已断开。按回车重新连接。' : '连接已断开(状态码 $exitCode)。按回车重新连接。',
+        exitCode == 0 ? tr('连接已断开。按回车重新连接。') : tr2('连接已断开(状态码 {0})。按回车重新连接。', [exitCode]),
         exitCode == 0 ? TerminalLineType.system : TerminalLineType.stderr,
       );
       return;
     }
     _appendLine(
-      exitCode == 0 ? '完成' : '进程退出，状态码 $exitCode',
+      exitCode == 0 ? tr('完成') : tr2('进程退出，状态码 {0}', [exitCode]),
       exitCode == 0 ? TerminalLineType.system : TerminalLineType.stderr,
     );
   }
@@ -1914,7 +1915,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       return;
     }
     if (command == 'exit') {
-      _appendLine('当前内置终端会话已保留。使用“重置”可以开启新的视图。', TerminalLineType.system);
+      _appendLine(tr('当前内置终端会话已保留。使用“重置”可以开启新的视图。'), TerminalLineType.system);
       _restoreInputFocus();
       return;
     }
@@ -1930,7 +1931,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         );
       }
       if (_history.isEmpty) {
-        _appendLine('(还没有历史命令)', TerminalLineType.system);
+        _appendLine(tr('(还没有历史命令)'), TerminalLineType.system);
       }
       _restoreInputFocus();
       return;
@@ -1992,7 +1993,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       _nativePtyUnavailable = true;
       _publishUiState();
       if (mounted && commandSessionId == _sessionId) {
-        _appendLine('PTY 启动失败，已回退到普通进程: $error', TerminalLineType.stderr);
+        _appendLine(tr2('PTY 启动失败，已回退到普通进程: {0}', [error]), TerminalLineType.stderr);
       }
       return false;
     }
@@ -2041,7 +2042,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         _process = null;
       });
       _publishUiState();
-      _appendLine('启动命令失败: $error', TerminalLineType.stderr);
+      _appendLine(tr2('启动命令失败: {0}', [error]), TerminalLineType.stderr);
       _restoreInputFocus();
     }
   }
@@ -2053,7 +2054,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       _handleNativePtyEvent,
       onError: (Object error) {
         if (!mounted) return;
-        _appendLine('PTY 事件通道异常: $error', TerminalLineType.stderr);
+        _appendLine(tr2('PTY 事件通道异常: {0}', [error]), TerminalLineType.stderr);
       },
     );
   }
@@ -2193,23 +2194,23 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         _appendLine(confirmation, TerminalLineType.prompt);
       }
     } catch (error) {
-      _appendLine('发送输入失败: $error', TerminalLineType.stderr);
+      _appendLine(tr2('发送输入失败: {0}', [error]), TerminalLineType.stderr);
     }
   }
 
   Future<void> _closeRunningProcessStdin() async {
     if (_nativePtySessionId != null) {
       await _writeNativePtyInput('\u0004');
-      _appendLine('已发送 EOF。', TerminalLineType.system);
+      _appendLine(tr('已发送 EOF。'), TerminalLineType.system);
       return;
     }
     final process = _process;
     if (process == null) return;
     try {
       await process.stdin.close();
-      _appendLine('已关闭进程输入。', TerminalLineType.system);
+      _appendLine(tr('已关闭进程输入。'), TerminalLineType.system);
     } catch (error) {
-      _appendLine('关闭进程输入失败: $error', TerminalLineType.stderr);
+      _appendLine(tr2('关闭进程输入失败: {0}', [error]), TerminalLineType.stderr);
     }
   }
 
@@ -2229,11 +2230,11 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         return;
       }
       if (mounted) {
-        _appendLine('发送 PTY 输入失败: $error', TerminalLineType.stderr);
+        _appendLine(tr2('发送 PTY 输入失败: {0}', [error]), TerminalLineType.stderr);
       }
     } catch (error) {
       if (mounted) {
-        _appendLine('发送 PTY 输入失败: $error', TerminalLineType.stderr);
+        _appendLine(tr2('发送 PTY 输入失败: {0}', [error]), TerminalLineType.stderr);
       }
     }
   }
@@ -2250,7 +2251,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         _runningCommand = null;
       });
       _publishUiState();
-      _appendLine('PTY 会话已结束，已回到命令输入。', TerminalLineType.system);
+      _appendLine(tr('PTY 会话已结束，已回到命令输入。'), TerminalLineType.system);
       _restoreInputFocus();
     } else {
       _isRunning = false;
@@ -2307,7 +2308,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         final canUseDirectory = await _canRunInDirectory(nextCwd);
         if (!canUseDirectory) {
           _appendLine(
-            '无权访问目录: $nextCwd。可点击右上角“选择目录”授权后再进入。',
+            tr2('无权访问目录: {0}。可点击右上角“选择目录”授权后再进入。', [nextCwd]),
             TerminalLineType.stderr,
           );
           return;
@@ -2324,7 +2325,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     } else {
       final message = result.stderr.toString().trim();
       _appendLine(
-        message.isEmpty ? '目录不存在: $resolvedTarget' : message,
+        message.isEmpty ? tr2('目录不存在: {0}', [resolvedTarget]) : message,
         TerminalLineType.stderr,
       );
     }
@@ -2342,7 +2343,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     _publishUiState();
     widget.onCwdChanged?.call(_cwd);
     _replaceWelcomeLine();
-    _appendLine('已切换到可访问目录: $selected', TerminalLineType.system);
+    _appendLine(tr2('已切换到可访问目录: {0}', [selected]), TerminalLineType.system);
   }
 
   Future<bool> _ensureWorkingDirectoryUsable() async {
@@ -2357,7 +2358,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     if (!mounted) return false;
     if (fallback == null) {
       _appendLine(
-        '当前目录不可访问，且没有找到可用的默认目录。请点击右上角“选择目录”授权一个目录。',
+        tr('当前目录不可访问，且没有找到可用的默认目录。请点击右上角“选择目录”授权一个目录。'),
         TerminalLineType.stderr,
       );
       return false;
@@ -2368,7 +2369,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     });
     _verifiedCwd = fallback;
     _publishUiState();
-    _appendLine('当前目录不可访问，已切换到: $fallback', TerminalLineType.system);
+    _appendLine(tr2('当前目录不可访问，已切换到: {0}', [fallback]), TerminalLineType.system);
     return true;
   }
 
@@ -2423,7 +2424,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     try {
       final initialDirectory = await FilePickerHelper.getInitialDirectory();
       final selectedPath = await FilePicker.getDirectoryPath(
-        dialogTitle: '选择终端工作目录',
+        dialogTitle: tr('选择终端工作目录'),
         initialDirectory: _directoryLooksReadableSync(_cwd)
             ? _cwd
             : initialDirectory,
@@ -2434,7 +2435,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         await MacosFileAccessService.persistAccess(selectedPath);
       }
       if (!await _canRunInDirectory(selectedPath)) {
-        _appendLine('目录仍不可访问: $selectedPath', TerminalLineType.stderr);
+        _appendLine(tr2('目录仍不可访问: {0}', [selectedPath]), TerminalLineType.stderr);
         return;
       }
       FilePickerHelper.updateLastDirectoryFromPath(selectedPath);
@@ -2445,9 +2446,9 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       _verifiedCwd = selectedPath;
       _publishUiState();
       widget.onCwdChanged?.call(_cwd);
-      _appendLine('当前目录: $selectedPath', TerminalLineType.system);
+      _appendLine(tr2('当前目录: {0}', [selectedPath]), TerminalLineType.system);
     } catch (error) {
-      _appendLine('选择目录失败: $error', TerminalLineType.stderr);
+      _appendLine(tr2('选择目录失败: {0}', [error]), TerminalLineType.stderr);
     } finally {
       if (mounted) {
         setState(() => _isPreparingDirectory = false);
@@ -2463,40 +2464,40 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
       ]);
       if (result.exitCode == 0) {
-        _appendLine('已打开系统设置：隐私与安全性 > 完全磁盘访问。', TerminalLineType.system);
+        _appendLine(tr('已打开系统设置：隐私与安全性 > 完全磁盘访问。'), TerminalLineType.system);
         await _revealCurrentAppBundleInFinder();
       } else {
         _appendLine(
           result.stderr.toString().trim().isEmpty
-              ? '打开完全磁盘访问设置失败。'
+              ? tr('打开完全磁盘访问设置失败。')
               : result.stderr.toString().trim(),
           TerminalLineType.stderr,
         );
       }
     } catch (error) {
-      _appendLine('打开完全磁盘访问设置失败: $error', TerminalLineType.stderr);
+      _appendLine(tr2('打开完全磁盘访问设置失败: {0}', [error]), TerminalLineType.stderr);
     }
   }
 
   Future<void> _revealCurrentAppBundleInFinder() async {
     final appPath = _currentAppBundlePath;
     if (appPath == null) {
-      _appendLine('未能定位当前应用包，请点击左下角“+”后手动选择应用。', TerminalLineType.system);
+      _appendLine(tr('未能定位当前应用包，请点击左下角“+”后手动选择应用。'), TerminalLineType.system);
       return;
     }
     final appExists = await Directory(appPath).exists();
     if (!appExists) {
-      _appendLine('当前应用包不存在: $appPath', TerminalLineType.stderr);
+      _appendLine(tr2('当前应用包不存在: {0}', [appPath]), TerminalLineType.stderr);
       return;
     }
     final result = await Process.run('/usr/bin/open', ['-R', appPath]);
     if (result.exitCode == 0) {
       _appendLine(
-        '如果列表里没有本应用，请点击左下角“+”，选择 Finder 中高亮的应用: $appPath',
+        tr2('如果列表里没有本应用，请点击左下角“+”，选择 Finder 中高亮的应用: {0}', [appPath]),
         TerminalLineType.system,
       );
     } else {
-      _appendLine('请点击左下角“+”后选择应用: $appPath', TerminalLineType.system);
+      _appendLine(tr2('请点击左下角“+”后选择应用: {0}', [appPath]), TerminalLineType.system);
     }
   }
 
@@ -2516,7 +2517,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     _didCheckFullDiskAccessInPage = true;
     final hasAccess = await _hasFullDiskAccess();
     if (!mounted || hasAccess) return;
-    _appendLine('未检测到完全磁盘访问权限，正在打开系统设置。授权后请重启应用。', TerminalLineType.stderr);
+    _appendLine(tr('未检测到完全磁盘访问权限，正在打开系统设置。授权后请重启应用。'), TerminalLineType.stderr);
     await _openFullDiskAccessSettings();
   }
 
@@ -2640,7 +2641,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       _refreshSearchMatches();
     });
     _publishUiState();
-    _appendLine('已清空输出。当前目录 $_cwd', TerminalLineType.system);
+    _appendLine(tr2('已清空输出。当前目录 {0}', [_cwd]), TerminalLineType.system);
   }
 
   void _resetSession() {
@@ -2731,7 +2732,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         _killNativePtySession(nativeSessionId, signal: quiet ? 'kill' : 'int'),
       );
       if (!quiet) {
-        _appendLine('已发送中断信号。', TerminalLineType.system);
+        _appendLine(tr('已发送中断信号。'), TerminalLineType.system);
       }
       return;
     }
@@ -2742,7 +2743,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       process.kill();
     });
     if (!quiet) {
-      _appendLine('已发送中断信号。', TerminalLineType.system);
+      _appendLine(tr('已发送中断信号。'), TerminalLineType.system);
     }
   }
 
@@ -2790,7 +2791,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       await _sessionLogger.stop();
       if (!mounted) return;
       setState(() {});
-      _logToast('已停止录制 · $path', ToastificationType.info);
+      _logToast(tr2('已停止录制 · {0}', [path]), ToastificationType.info);
       return;
     }
     try {
@@ -2800,10 +2801,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       );
       if (!mounted) return;
       setState(() {});
-      _logToast('开始录制 → $path', ToastificationType.success);
+      _logToast(tr2('开始录制 → {0}', [path]), ToastificationType.success);
     } catch (e) {
       if (!mounted) return;
-      _logToast('无法录制日志:$e', ToastificationType.error);
+      _logToast(tr2('无法录制日志:{0}', [e]), ToastificationType.error);
     }
   }
 
@@ -2857,7 +2858,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    theme.name,
+                    tr(theme.name),
                     style: TextStyle(
                       fontSize: 12.5,
                       color: AppTheme.headingColor,
@@ -2958,7 +2959,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
             children: [
               Icon(LucideIcons.plus300, size: 13, color: AppTheme.brandColor),
               const SizedBox(width: 8),
-              Text('新建片段…', style: TextStyle(fontSize: 13, color: AppTheme.brandColor)),
+              Text(tr('新建片段…'), style: TextStyle(fontSize: 13, color: AppTheme.brandColor)),
             ],
           ),
         ),
@@ -2973,7 +2974,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                 color: AppTheme.subtleTextColor,
               ),
               const SizedBox(width: 8),
-              Text('管理片段…', style: TextStyle(fontSize: 13, color: AppTheme.headingColor)),
+              Text(tr('管理片段…'), style: TextStyle(fontSize: 13, color: AppTheme.headingColor)),
             ],
           ),
         ),
@@ -2998,7 +2999,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(existing == null ? '新建片段' : '编辑片段'),
+        title: Text(existing == null ? tr('新建片段') : tr('编辑片段')),
         content: SizedBox(
           width: 380,
           child: Column(
@@ -3025,11 +3026,11 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   fontFamily: 'Menlo',
                   color: AppTheme.headingColor,
                 ),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
-                  labelText: '命令',
-                  hintText: '发送时自动执行(末尾补换行)',
-                  border: OutlineInputBorder(),
+                  labelText: tr('命令'),
+                  hintText: tr('发送时自动执行(末尾补换行)'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ],
@@ -3038,12 +3039,12 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('保存'),
+            child: Text(tr('保存')),
           ),
         ],
       ),
@@ -3067,7 +3068,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('管理片段'),
+        title: Text(tr('管理片段')),
         content: SizedBox(
           width: 400,
           height: 360,
@@ -3077,7 +3078,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               if (list.isEmpty) {
                 return Center(
                   child: Text(
-                    '还没有片段,点「新建」添加常用命令',
+                    tr('还没有片段,点「新建」添加常用命令'),
                     style: TextStyle(
                       fontSize: 12.5,
                       color: AppTheme.subtleTextColor,
@@ -3114,12 +3115,12 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          tooltip: '编辑',
+                          tooltip: tr('编辑'),
                           icon: Icon(LucideIcons.penLine300, size: 15),
                           onPressed: () => unawaited(_editSnippet(s)),
                         ),
                         IconButton(
-                          tooltip: '删除',
+                          tooltip: tr('删除'),
                           icon: Icon(
                             LucideIcons.trash300,
                             size: 15,
@@ -3138,12 +3139,12 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         actions: [
           TextButton(
             onPressed: () => unawaited(_editSnippet(null)),
-            child: const Text('新建'),
+            child: Text(tr('新建')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('完成'),
+            child: Text(tr('完成')),
           ),
         ],
       ),
@@ -3630,7 +3631,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       }
       _writeInputToRunningProcess(
         payload,
-        confirmation: '已粘贴 ${payload.length} 个字符到进程输入。',
+        confirmation: tr2('已粘贴 {0} 个字符到进程输入。', [payload.length]),
       );
       _activeInputNode.requestFocus();
       return;
@@ -3651,7 +3652,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     final text = _lines.map((line) => line.text).join('\n');
     if (text.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: text));
-    _appendLine('已复制全部输出。', TerminalLineType.system);
+    _appendLine(tr('已复制全部输出。'), TerminalLineType.system);
   }
 
   Future<void> _saveOutputToFile() async {
@@ -3659,16 +3660,16 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     if (text.isEmpty) return;
     try {
       final path = await FilePicker.saveFile(
-        dialogTitle: '保存终端输出',
+        dialogTitle: tr('保存终端输出'),
         fileName:
             'termora-terminal-${DateTime.now().millisecondsSinceEpoch}.log',
         initialDirectory: _directoryLooksReadableSync(_cwd) ? _cwd : null,
       );
       if (path == null || path.isEmpty) return;
       await File(path).writeAsString(text, flush: true);
-      _appendLine('已保存输出: $path', TerminalLineType.system);
+      _appendLine(tr2('已保存输出: {0}', [path]), TerminalLineType.system);
     } catch (error) {
-      _appendLine('保存输出失败: $error', TerminalLineType.stderr);
+      _appendLine(tr2('保存输出失败: {0}', [error]), TerminalLineType.stderr);
     }
   }
 
@@ -3750,7 +3751,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       final remaining = candidates.length - maxDisplayCount;
       _lines.add(
         TerminalLine.plain(
-          '... 还有 $remaining 个匹配项，请继续输入以缩小范围',
+          tr2('... 还有 {0} 个匹配项，请继续输入以缩小范围', [remaining]),
           TerminalLineType.system,
         ),
       );
@@ -4098,7 +4099,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     }
     final from = includeCommand ? range.start : outputStart;
     if (from >= range.end) {
-      _logToast('该命令没有输出', ToastificationType.info);
+      _logToast(tr('该命令没有输出'), ToastificationType.info);
       return;
     }
     final text = [
@@ -4107,7 +4108,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     _logToast(
-      includeCommand ? '已复制命令+输出' : '已复制命令输出',
+      includeCommand ? tr('已复制命令+输出') : tr('已复制命令输出'),
       ToastificationType.success,
     );
   }
@@ -4144,8 +4145,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
             height: 38,
             child: Text(
               _foldedPrompts.contains(_lines[promptLine])
-                  ? '展开输出'
-                  : '折叠输出(${_foldedLineCount(promptLine)} 行)',
+                  ? tr('展开输出')
+                  : tr2('折叠输出({0} 行)', [_foldedLineCount(promptLine)]),
               style: const TextStyle(fontSize: 12.5),
             ),
           ),
@@ -4161,7 +4162,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
 
   void _toastNoShellIntegration() {
     _logToast(
-      '未检测到命令标记 —— 需在 shell 里启用 OSC 133 集成',
+      tr('未检测到命令标记 —— 需在 shell 里启用 OSC 133 集成'),
       ToastificationType.info,
     );
   }
@@ -4550,12 +4551,12 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       if (result.exitCode != 0) {
         final message = result.stderr.toString().trim();
         _appendLine(
-          message.isEmpty ? '打开链接失败: $url' : message,
+          message.isEmpty ? tr2('打开链接失败: {0}', [url]) : message,
           TerminalLineType.stderr,
         );
       }
     } catch (error) {
-      _appendLine('打开链接失败: $error', TerminalLineType.stderr);
+      _appendLine(tr2('打开链接失败: {0}', [error]), TerminalLineType.stderr);
     }
   }
 
@@ -4814,12 +4815,12 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       padding: const EdgeInsets.fromLTRB(8, 8, 6, 8),
       child: Row(
         children: [
-          _buildPanelTab(_TerminalPanelTab.info, LucideIcons.info300, '信息'),
+          _buildPanelTab(_TerminalPanelTab.info, LucideIcons.info300, tr('信息')),
           const SizedBox(width: 2),
           _buildPanelTab(
             _TerminalPanelTab.outline,
             LucideIcons.listTree300,
-            '大纲',
+            tr('大纲'),
           ),
           // 本地会话:git 跑本地 cwd;SSH 会话:仅当提供了远端 git 运行器
           // 才显示(走 ssh 到远端仓库),否则隐藏(本地 cwd 对 SSH 无意义)
@@ -4832,10 +4833,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
             ),
           ],
           const SizedBox(width: 2),
-          _buildPanelTab(_TerminalPanelTab.files, LucideIcons.folder300, '文件'),
+          _buildPanelTab(_TerminalPanelTab.files, LucideIcons.folder300, tr('文件')),
           const Spacer(),
           _TerminalIconButton(
-            tooltip: '关闭面板',
+            tooltip: tr('关闭面板'),
             icon: LucideIcons.x300,
             size: 28,
             iconSize: 14,
@@ -4970,16 +4971,16 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
 
   Widget _buildInfoTabContent() {
     final rows = <(String, String)>[
-      ('当前目录', _cwd),
+      (tr('当前目录'), _cwd),
       ('Shell', _shellLabel),
-      ('后端', _terminalBackendLabel),
-      ('尺寸', '$_ptyColumns 列 × $_ptyRows 行'),
+      (tr('后端'), _terminalBackendLabel),
+      (tr('尺寸'), tr2('{0} 列 × {1} 行', [_ptyColumns, _ptyRows])),
       ('状态', _isRunning ? '运行中: ${_runningCommand ?? ''}' : '空闲'),
-      ('字号', '${(widget.fontScale * 100).round()}%'),
-      ('自动折行', _autoWrapMode ? '开' : '关'),
-      ('光标', _showCursor ? '显示' : '隐藏'),
+      (tr('字号'), '${(widget.fontScale * 100).round()}%'),
+      (tr('自动折行'), _autoWrapMode ? tr('开') : tr('关')),
+      (tr('光标'), _showCursor ? tr('显示') : tr('隐藏')),
       if (_isAltBufferActive) ('缓冲区', 'Alt Buffer'),
-      if ((_titleStack.current ?? '').isNotEmpty) ('标题', _titleStack.current!),
+      if ((_titleStack.current ?? '').isNotEmpty) (tr('标题'), _titleStack.current!),
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -5020,7 +5021,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       }
     }
     if (entries.isEmpty) {
-      return _buildPanelEmpty(LucideIcons.listTree300, '还没有执行过命令');
+      return _buildPanelEmpty(LucideIcons.listTree300, tr('还没有执行过命令'));
     }
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -5089,11 +5090,11 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
           builder: (context, constraints) {
             final compact = constraints.maxWidth < 360;
             final inline = <Widget>[
-              _toolbarButton('搜索', LucideIcons.search300, _showSearch),
+              _toolbarButton(tr('搜索'), LucideIcons.search300, _showSearch),
               const SizedBox(width: 2),
               Builder(
                 builder: (btnContext) => _toolbarButton(
-                  '快捷命令 / 片段',
+                  tr('快捷命令 / 片段'),
                   LucideIcons.zap300,
                   () {
                     final box = btnContext.findRenderObject() as RenderBox?;
@@ -5106,14 +5107,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               ),
               const SizedBox(width: 2),
               _toolbarButton(
-                '触发器高亮',
+                tr('触发器高亮'),
                 LucideIcons.highlighter300,
                 () => unawaited(showHighlightManager(context)),
               ),
               const SizedBox(width: 2),
               Builder(
                 builder: (btnContext) => _toolbarButton(
-                  '配色方案',
+                  tr('配色方案'),
                   LucideIcons.palette300,
                   () {
                     final box = btnContext.findRenderObject() as RenderBox?;
@@ -5128,7 +5129,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   widget.onOpenRemoteFiles != null) ...[
                 const SizedBox(width: 2),
                 _toolbarButton(
-                  '文件(SFTP)—在 SSH 当前目录打开',
+                  tr('文件(SFTP)—在 SSH 当前目录打开'),
                   LucideIcons.folder300,
                   widget.onOpenRemoteFiles,
                 ),
@@ -5136,7 +5137,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               if (widget.remoteCommand != null && !ui.isRunning) ...[
                 const SizedBox(width: 2),
                 _toolbarButton(
-                  '重新连接 SSH',
+                  tr('重新连接 SSH'),
                   LucideIcons.plugZap300,
                   _reconnectRemote,
                 ),
@@ -5144,7 +5145,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               if (ui.isRunning) ...[
                 const SizedBox(width: 2),
                 _toolbarButton(
-                  '停止',
+                  tr('停止'),
                   LucideIcons.square300,
                   () => _stopProcess(),
                 ),
@@ -5152,7 +5153,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               if (!ui.autoFollowOutput) ...[
                 const SizedBox(width: 2),
                 _toolbarButton(
-                  '滚动到底部',
+                  tr('滚动到底部'),
                   LucideIcons.arrowDownToLine300,
                   _forceScrollToBottom,
                 ),
@@ -5160,13 +5161,13 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               if (!compact) ...[
                 const SizedBox(width: 2),
                 _toolbarButton(
-                  '向右分屏',
+                  tr('向右分屏'),
                   LucideIcons.columns2300,
                   widget.onSplitHorizontal,
                 ),
                 const SizedBox(width: 2),
                 _toolbarButton(
-                  '向下分屏',
+                  tr('向下分屏'),
                   LucideIcons.rows2300,
                   widget.onSplitVertical,
                 ),
@@ -5175,8 +5176,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                 const SizedBox(width: 2),
                 _TerminalIconButton(
                   tooltip: widget.broadcastEnabled
-                      ? '命令广播:开(输入同时发给所有会话)— 点击关闭'
-                      : '命令广播:输入同时发给所有会话',
+                      ? tr('命令广播:开(输入同时发给所有会话)— 点击关闭')
+                      : tr('命令广播:输入同时发给所有会话'),
                   icon: LucideIcons.radio300,
                   size: 24,
                   iconSize: 13,
@@ -5186,8 +5187,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                 const SizedBox(width: 2),
                 _TerminalIconButton(
                   tooltip: widget.syncScrollEnabled
-                      ? '同步滚动:开(所有分屏一起滚)— 点击关闭'
-                      : '同步滚动:所有分屏一起滚动',
+                      ? tr('同步滚动:开(所有分屏一起滚)— 点击关闭')
+                      : tr('同步滚动:所有分屏一起滚动'),
                   icon: LucideIcons.arrowDownUp300,
                   size: 24,
                   iconSize: 13,
@@ -5198,8 +5199,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               const SizedBox(width: 2),
               _TerminalIconButton(
                 tooltip: _sessionLogger.isActive
-                    ? '会话日志:录制中(输出落盘)— 点击停止'
-                    : '会话日志:录制终端输出到本地文件',
+                    ? tr('会话日志:录制中(输出落盘)— 点击停止')
+                    : tr('会话日志:录制终端输出到本地文件'),
                 icon: _sessionLogger.isActive
                     ? LucideIcons.circleStop300
                     : LucideIcons.circleDot300,
@@ -5211,14 +5212,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               if (widget.canClosePane) ...[
                 const SizedBox(width: 2),
                 _toolbarButton(
-                  '关闭终端',
+                  tr('关闭终端'),
                   LucideIcons.x300,
                   () => unawaited(_confirmClosePane()),
                 ),
               ],
               const SizedBox(width: 2),
               _TerminalIconButton(
-                tooltip: _minimapVisible ? '隐藏缩略图' : '缩略图导航',
+                tooltip: _minimapVisible ? tr('隐藏缩略图') : tr('缩略图导航'),
                 icon: LucideIcons.map300,
                 size: 24,
                 iconSize: 13,
@@ -5228,7 +5229,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               ),
               const SizedBox(width: 2),
               _TerminalIconButton(
-                tooltip: _detailsPanelVisible ? '隐藏详情面板' : '详情面板',
+                tooltip: _detailsPanelVisible ? tr('隐藏详情面板') : tr('详情面板'),
                 icon: _detailsPanelVisible
                     ? LucideIcons.panelRightClose300
                     : LucideIcons.panelRight300,
@@ -5300,7 +5301,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
 
   Widget _buildToolbarTitle(BuildContext context, TerminalUiState ui) {
     return Tooltip(
-      message: '拖拽以重排布局',
+      message: tr('拖拽以重排布局'),
       waitDuration: const Duration(milliseconds: 600),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -5423,7 +5424,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       width: 24,
       height: 24,
       child: GlassPopupMenuButton<_TerminalOverflowAction>(
-        tooltip: '更多',
+        tooltip: tr('更多'),
         position: PopupMenuPosition.under,
         padding: EdgeInsets.zero,
         splashRadius: 16,
@@ -5444,13 +5445,13 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
             _overflowItem(
               _TerminalOverflowAction.splitHorizontal,
               LucideIcons.columns2300,
-              '向右分屏',
+              tr('向右分屏'),
               enabled: widget.onSplitHorizontal != null,
             ),
             _overflowItem(
               _TerminalOverflowAction.splitVertical,
               LucideIcons.rows2300,
-              '向下分屏',
+              tr('向下分屏'),
               enabled: widget.onSplitVertical != null,
             ),
             const PopupMenuDivider(),
@@ -5458,63 +5459,63 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
           _overflowItem(
             _TerminalOverflowAction.copyAll,
             LucideIcons.copy300,
-            '复制全部输出',
+            tr('复制全部输出'),
             enabled: ui.hasOutput,
           ),
           _overflowItem(
             _TerminalOverflowAction.save,
             LucideIcons.save300,
-            '保存输出',
+            tr('保存输出'),
             enabled: ui.hasOutput,
           ),
           _overflowItem(
             _TerminalOverflowAction.paste,
             LucideIcons.clipboardList300,
-            '粘贴',
+            tr('粘贴'),
           ),
           _overflowItem(
             _TerminalOverflowAction.pickDir,
             LucideIcons.folderOpen300,
-            '选择目录',
+            tr('选择目录'),
             enabled: !(ui.isPreparingDirectory || ui.isRunning),
           ),
           if (Platform.isMacOS)
             _overflowItem(
               _TerminalOverflowAction.fullDiskAccess,
               LucideIcons.shield300,
-              '完全磁盘访问',
+              tr('完全磁盘访问'),
             ),
           _overflowItem(
             _TerminalOverflowAction.linkMatchers,
             LucideIcons.link300,
-            '自定义链接规则',
+            tr('自定义链接规则'),
           ),
           const PopupMenuDivider(),
           _overflowItem(
             _TerminalOverflowAction.zoomIn,
             LucideIcons.zoomIn300,
-            '放大字号',
+            tr('放大字号'),
           ),
           _overflowItem(
             _TerminalOverflowAction.zoomOut,
             LucideIcons.zoomOut300,
-            '缩小字号',
+            tr('缩小字号'),
           ),
           _overflowItem(
             _TerminalOverflowAction.zoomReset,
             LucideIcons.refreshCw300,
-            '重置字号 (${(widget.fontScale * 100).round()}%)',
+            tr2('重置字号 ({0}%)', [(widget.fontScale * 100).round()]),
           ),
           const PopupMenuDivider(),
           _overflowItem(
             _TerminalOverflowAction.clear,
             LucideIcons.eraser300,
-            '清空',
+            tr('清空'),
           ),
           _overflowItem(
             _TerminalOverflowAction.reset,
             LucideIcons.rotateCcw300,
-            '重置会话',
+            tr('重置会话'),
           ),
         ],
       ),
@@ -5613,7 +5614,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   if (showHints) ...[
                     const SizedBox(width: 10),
                     Text(
-                      '⌘F 搜索   ⌃C 停止   ⌃D EOF   ⌘± 缩放',
+                      tr('⌘F 搜索   ⌃C 停止   ⌃D EOF   ⌘± 缩放'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -5639,7 +5640,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       ),
       if (widget.remoteCommand != null)
         _TerminalFooterChip(
-          label: ui.isRunning ? 'SSH · 已连接' : 'SSH · 未连接',
+          label: ui.isRunning ? tr('SSH · 已连接') : tr('SSH · 未连接'),
           tone: ui.isRunning ? _FooterChipTone.active : _FooterChipTone.warning,
         ),
       if (ui.isRunning)
@@ -5650,13 +5651,13 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       if (ui.isAltBufferActive)
         _TerminalFooterChip(label: 'Alt Buffer', tone: _FooterChipTone.active),
       if (ui.bracketedPasteMode)
-        _TerminalFooterChip(label: '括号粘贴', tone: _FooterChipTone.neutral),
+        _TerminalFooterChip(label: tr('括号粘贴'), tone: _FooterChipTone.neutral),
       if (!ui.autoWrapMode)
-        _TerminalFooterChip(label: '禁止折行', tone: _FooterChipTone.neutral),
+        _TerminalFooterChip(label: tr('禁止折行'), tone: _FooterChipTone.neutral),
       if (!ui.showCursor)
-        _TerminalFooterChip(label: '隐藏光标', tone: _FooterChipTone.neutral),
+        _TerminalFooterChip(label: tr('隐藏光标'), tone: _FooterChipTone.neutral),
       if (!ui.autoFollowOutput)
-        _TerminalFooterChip(label: '滚动暂停', tone: _FooterChipTone.warning),
+        _TerminalFooterChip(label: tr('滚动暂停'), tone: _FooterChipTone.warning),
       if (widget.fontScale != 1.0)
         _TerminalFooterChip(
           label: '${(widget.fontScale * 100).round()}%',
@@ -6399,7 +6400,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               ),
               const SizedBox(width: 5),
               Text(
-                '已折叠 $count 行输出 — 点击展开',
+                tr2('已折叠 {0} 行输出 — 点击展开', [count]),
                 style: TextStyle(
                   fontSize: 10.5,
                   color: AppTheme.subtleTextColor,
@@ -6434,7 +6435,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                 ),
                 color: AppTheme.subtleSurfaceColor.withValues(alpha: 0.5),
                 child: Text(
-                  '⚠ 图片解码失败',
+                  tr('⚠ 图片解码失败'),
                   style: TextStyle(
                     fontSize: 11,
                     color: AppTheme.subtleTextColor,
@@ -6522,7 +6523,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   decoration: InputDecoration(
                     isDense: true,
                     border: InputBorder.none,
-                    hintText: _searchRegex ? '搜索输出(正则)' : '搜索输出',
+                    hintText: _searchRegex ? tr('搜索输出(正则)') : tr('搜索输出'),
                     hintStyle: monoStyle.copyWith(
                       color: AppTheme.subtleTextColor,
                     ),
@@ -6537,7 +6538,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               _searchToggle(
                 'Aa',
                 _searchCaseSensitive,
-                '区分大小写',
+                tr('区分大小写'),
                 () => _toggleSearchOption(
                   () => _searchCaseSensitive = !_searchCaseSensitive,
                 ),
@@ -6546,7 +6547,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               _searchToggle(
                 'W',
                 _searchWholeWord,
-                '全词匹配',
+                tr('全词匹配'),
                 () => _toggleSearchOption(
                   () => _searchWholeWord = !_searchWholeWord,
                 ),
@@ -6555,12 +6556,12 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               _searchToggle(
                 '.*',
                 _searchRegex,
-                '正则表达式',
+                tr('正则表达式'),
                 () => _toggleSearchOption(() => _searchRegex = !_searchRegex),
               ),
               const SizedBox(width: 10),
               Text(
-                _searchError ? '正则错误' : ui.searchOrdinalLabel,
+                _searchError ? tr('正则错误') : ui.searchOrdinalLabel,
                 style: TextStyle(
                   fontSize: 12,
                   color: _searchError
@@ -6570,19 +6571,19 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               ),
               const SizedBox(width: 8),
               _TerminalIconButton(
-                tooltip: '上一个',
+                tooltip: tr('上一个'),
                 icon: LucideIcons.chevronUp300,
                 onPressed: count == 0 ? null : () => _moveSearchMatch(-1),
               ),
               const SizedBox(width: 6),
               _TerminalIconButton(
-                tooltip: '下一个',
+                tooltip: tr('下一个'),
                 icon: LucideIcons.chevronDown300,
                 onPressed: count == 0 ? null : () => _moveSearchMatch(1),
               ),
               const SizedBox(width: 6),
               _TerminalIconButton(
-                tooltip: '关闭搜索',
+                tooltip: tr('关闭搜索'),
                 icon: LucideIcons.x300,
                 onPressed: _hideSearch,
               ),
@@ -6655,7 +6656,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                     isDense: true,
                     border: InputBorder.none,
                     hintText: _isRunning
-                        ? '发送到进程 stdin，Ctrl+C 停止，Ctrl+D 结束输入'
+                        ? tr('发送到进程 stdin，Ctrl+C 停止，Ctrl+D 结束输入')
                         : null,
                     hintStyle: monoStyle.copyWith(
                       color: AppTheme.subtleTextColor,

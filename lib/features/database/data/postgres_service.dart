@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:postgres/postgres.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// PostgreSQL 访问封装(基于 package:postgres v3)
 /// 元数据查询参考 DBeaver postgresql 插件的做法:走 pg_catalog / information_schema
@@ -339,7 +340,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
     String? newValue,
   }) async {
     if (pkValues.isEmpty) {
-      throw StateError('没有主键,无法定位要更新的行');
+      throw StateError(tr('没有主键,无法定位要更新的行'));
     }
 
     // 值以文本参数传入,CAST 成目标列类型(dataType 来自 pg_catalog,可信)
@@ -367,7 +368,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
     );
 
     if (result.affectedRows != 1) {
-      throw StateError('更新影响了 ${result.affectedRows} 行(预期 1 行),已回读刷新');
+      throw StateError(tr2('更新影响了 {0} 行(预期 1 行),已回读刷新', [result.affectedRows]));
     }
     return _normalizeValue(result.first.first);
   }
@@ -381,7 +382,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
     required DbEditSession session,
   }) async {
     if (!context.editable) {
-      throw StateError('该结果集没有完整主键,无法保存改动');
+      throw StateError(tr('该结果集没有完整主键,无法保存改动'));
     }
 
     final schema = _quoteIdent(context.schema);
@@ -400,7 +401,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
           parameters: params,
         );
         if (result.affectedRows != 1) {
-          throw StateError('删除行影响了 ${result.affectedRows} 行(预期 1)');
+          throw StateError(tr2('删除行影响了 {0} 行(预期 1)', [result.affectedRows]));
         }
         applied++;
       }
@@ -439,7 +440,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
           parameters: params,
         );
         if (result.affectedRows != 1) {
-          throw StateError('更新行影响了 ${result.affectedRows} 行(预期 1)');
+          throw StateError(tr2('更新行影响了 {0} 行(预期 1)', [result.affectedRows]));
         }
         applied++;
       }

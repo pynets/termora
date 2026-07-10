@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:termora/core/app_version.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 一次可用的升级:GitHub Release 的版本与 dmg 资产。
 class UpdateInfo {
@@ -88,7 +89,7 @@ class UpdateService {
         sizeBytes: size,
       );
     } catch (e) {
-      if (kDebugMode) debugPrint('检查更新失败(忽略): $e');
+      if (kDebugMode) debugPrint(tr2('检查更新失败(忽略): {0}', [e]));
       return null;
     }
   }
@@ -116,14 +117,14 @@ class UpdateService {
     void Function(double progress) onProgress,
   ) async {
     final url = info.dmgUrl;
-    if (url == null) throw Exception('该版本没有 dmg 资产');
+    if (url == null) throw Exception(tr('该版本没有 dmg 资产'));
     final client = http.Client();
     try {
       final request = http.Request('GET', Uri.parse(url));
       request.headers['User-Agent'] = 'termora-updater';
       final resp = await client.send(request);
       if (resp.statusCode != 200) {
-        throw Exception('下载失败 HTTP ${resp.statusCode}');
+        throw Exception(tr2('下载失败 HTTP {0}', [resp.statusCode]));
       }
       final total = resp.contentLength ?? info.sizeBytes;
       final file = File(
@@ -209,7 +210,7 @@ class UpdateService {
       await Future<void>.delayed(const Duration(milliseconds: 300));
       exit(0);
     } catch (e) {
-      if (kDebugMode) debugPrint('自动安装失败: $e');
+      if (kDebugMode) debugPrint(tr2('自动安装失败: {0}', [e]));
       return false;
     } finally {
       if (mountPoint != null) {

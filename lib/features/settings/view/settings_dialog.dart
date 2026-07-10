@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/app_version.dart';
+import 'package:termora/features/settings/controller/app_update_controller.dart';
 import 'package:termora/features/settings/controller/setting_providers.dart';
 
 /// 打开设置弹窗
@@ -26,248 +27,398 @@ class SettingsDialog extends ConsumerWidget {
     final locale = ref.watch(appLocaleControllerProvider);
     final l10n = AppL10n.resolve(locale);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final updateState = ref.watch(appUpdateControllerProvider);
 
     return Dialog(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(LucideIcons.settings, size: 18, color: AppTheme.brandColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    l10n.settings,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.headingColor,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: l10n.close,
-                    icon: Icon(
-                      LucideIcons.x,
-                      size: 16,
-                      color: AppTheme.subtleTextColor,
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // ── 界面语言 ──
-              Text(
-                l10n.language,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.subtleTextColor,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _ModernSegmentedBar<AppLocale>(
-                selected: locale,
-                onChanged: (value) => ref
-                    .read(appLocaleControllerProvider.notifier)
-                    .setLocale(value),
-                items: [
-                  _SegmentItem(
-                    value: AppLocale.system,
-                    label: l10n.followSystem,
-                    icon: LucideIcons.languages,
-                  ),
-                  _SegmentItem(
-                    value: AppLocale.zh,
-                    label: l10n.chinese,
-                  ),
-                  _SegmentItem(
-                    value: AppLocale.en,
-                    label: l10n.english,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // ── 主题模式 ──
-              Text(
-                l10n.theme,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.subtleTextColor,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _ModernSegmentedBar<ThemeMode>(
-                selected: themeMode,
-                onChanged: (value) => ref
-                    .read(appThemeControllerProvider.notifier)
-                    .setThemeMode(value),
-                items: [
-                  _SegmentItem(
-                    value: ThemeMode.system,
-                    label: l10n.followSystem,
-                    icon: LucideIcons.monitor,
-                  ),
-                  _SegmentItem(
-                    value: ThemeMode.light,
-                    label: l10n.lightTheme,
-                    icon: LucideIcons.sun,
-                  ),
-                  _SegmentItem(
-                    value: ThemeMode.dark,
-                    label: l10n.darkTheme,
-                    icon: LucideIcons.moon,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // ── 品牌主色 ──
-              Text(
-                l10n.brandColor,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.subtleTextColor,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final color in AppBrandColor.values)
-                    _BrandColorSwatch(
-                      color: color,
-                      isDark: isDark,
-                      selected: color == brandColor,
-                      onTap: () => ref
-                          .read(appBrandColorControllerProvider.notifier)
-                          .setColor(color),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                l10n.brandColorDesc,
-                style: TextStyle(fontSize: 11, color: AppTheme.subtleTextColor),
-              ),
-
-              const SizedBox(height: 20),
-              Divider(height: 1, color: AppTheme.borderColor),
-              const SizedBox(height: 16),
-
-              // ── 关于 Termora (About) ──
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.03)
-                      : Colors.black.withValues(alpha: 0.02),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.borderColor),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        constraints: BoxConstraints(
+          maxWidth: 480,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Icon(LucideIcons.info, size: 16, color: AppTheme.brandColor),
-                        const SizedBox(width: 8),
-                        Text(
-                          l10n.aboutTermora,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.headingColor,
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppTheme.brandColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'v$kAppVersion+$kAppBuild',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.brandColor,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Icon(
+                      LucideIcons.settings,
+                      size: 18,
+                      color: AppTheme.brandColor,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(width: 8),
                     Text(
-                      l10n.aboutTagline,
+                      l10n.settings,
                       style: TextStyle(
-                        fontSize: 11.5,
-                        color: AppTheme.bodyColor,
-                        height: 1.35,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.headingColor,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        InkWell(
-                          borderRadius: BorderRadius.circular(4),
-                          onTap: () {
-                            if (Platform.isMacOS) {
-                              Process.run('open', ['https://github.com/pynets/termora']);
-                            } else if (Platform.isLinux) {
-                              Process.run('xdg-open', ['https://github.com/pynets/termora']);
-                            } else if (Platform.isWindows) {
-                              Process.run('cmd', ['/c', 'start', 'https://github.com/pynets/termora']);
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(LucideIcons.externalLink, size: 13, color: AppTheme.brandColor),
-                                const SizedBox(width: 5),
-                                Text(
-                                  'https://github.com/pynets/termora',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.brandColor,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          'MIT License',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.subtleTextColor,
-                          ),
-                        ),
-                      ],
+                    const Spacer(),
+                    IconButton(
+                      tooltip: l10n.close,
+                      icon: Icon(
+                        LucideIcons.x,
+                        size: 16,
+                        color: AppTheme.subtleTextColor,
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+
+                // ── 界面语言 ──
+                Text(
+                  l10n.language,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.subtleTextColor,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _ModernSegmentedBar<AppLocale>(
+                  selected: locale,
+                  onChanged: (value) => ref
+                      .read(appLocaleControllerProvider.notifier)
+                      .setLocale(value),
+                  items: [
+                    _SegmentItem(
+                      value: AppLocale.system,
+                      label: l10n.followSystem,
+                      icon: LucideIcons.languages,
+                    ),
+                    _SegmentItem(value: AppLocale.zh, label: l10n.chinese),
+                    _SegmentItem(value: AppLocale.en, label: l10n.english),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // ── 主题模式 ──
+                Text(
+                  l10n.theme,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.subtleTextColor,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _ModernSegmentedBar<ThemeMode>(
+                  selected: themeMode,
+                  onChanged: (value) => ref
+                      .read(appThemeControllerProvider.notifier)
+                      .setThemeMode(value),
+                  items: [
+                    _SegmentItem(
+                      value: ThemeMode.system,
+                      label: l10n.followSystem,
+                      icon: LucideIcons.monitor,
+                    ),
+                    _SegmentItem(
+                      value: ThemeMode.light,
+                      label: l10n.lightTheme,
+                      icon: LucideIcons.sun,
+                    ),
+                    _SegmentItem(
+                      value: ThemeMode.dark,
+                      label: l10n.darkTheme,
+                      icon: LucideIcons.moon,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // ── 品牌主色 ──
+                Text(
+                  l10n.brandColor,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.subtleTextColor,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final color in AppBrandColor.values)
+                      _BrandColorSwatch(
+                        color: color,
+                        isDark: isDark,
+                        selected: color == brandColor,
+                        onTap: () => ref
+                            .read(appBrandColorControllerProvider.notifier)
+                            .setColor(color),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  l10n.brandColorDesc,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.subtleTextColor,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+                Divider(height: 1, color: AppTheme.borderColor),
+                const SizedBox(height: 16),
+
+                _buildUpdateSection(ref, l10n, updateState, isDark),
+                const SizedBox(height: 16),
+
+                // ── 关于 Termora (About) ──
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.03)
+                        : Colors.black.withValues(alpha: 0.02),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.borderColor),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            LucideIcons.info,
+                            size: 16,
+                            color: AppTheme.brandColor,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            l10n.aboutTermora,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.headingColor,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.brandColor.withValues(
+                                alpha: 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'v$kAppVersion+$kAppBuild',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.brandColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        l10n.aboutTagline,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppTheme.bodyColor,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          InkWell(
+                            borderRadius: BorderRadius.circular(4),
+                            onTap: () {
+                              if (Platform.isMacOS) {
+                                Process.run('open', [
+                                  'https://github.com/pynets/termora',
+                                ]);
+                              } else if (Platform.isLinux) {
+                                Process.run('xdg-open', [
+                                  'https://github.com/pynets/termora',
+                                ]);
+                              } else if (Platform.isWindows) {
+                                Process.run('cmd', [
+                                  '/c',
+                                  'start',
+                                  'https://github.com/pynets/termora',
+                                ]);
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    LucideIcons.externalLink,
+                                    size: 13,
+                                    color: AppTheme.brandColor,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'https://github.com/pynets/termora',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppTheme.brandColor,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'MIT License',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.subtleTextColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildUpdateSection(
+    WidgetRef ref,
+    AppL10n l10n,
+    AppUpdateState state,
+    bool isDark,
+  ) {
+    final update = state.update;
+    final percent = ((state.progress ?? 0) * 100).floor();
+    final isDownloading = state.phase == AppUpdatePhase.downloading;
+    final status = switch (state.phase) {
+      AppUpdatePhase.checking => l10n.checkingForUpdates,
+      AppUpdatePhase.upToDate => l10n.upToDate,
+      AppUpdatePhase.available => l10n.updateAvailable(update!.tagName),
+      AppUpdatePhase.downloading => l10n.downloadingUpdate(percent),
+      AppUpdatePhase.installing => l10n.installingUpdate,
+      AppUpdatePhase.manualInstallOpened => l10n.manualInstallOpened,
+      AppUpdatePhase.failed => l10n.updateFailed,
+      AppUpdatePhase.idle => l10n.checkForUpdates,
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.03)
+            : Colors.black.withValues(alpha: 0.02),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                LucideIcons.circleArrowUp300,
+                size: 16,
+                color: AppTheme.brandColor,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                l10n.softwareUpdate,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.headingColor,
+                ),
+              ),
+              const Spacer(),
+              if (state.phase == AppUpdatePhase.available && update != null)
+                Text(
+                  update.sizeLabel,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.subtleTextColor,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(
+            status,
+            style: TextStyle(fontSize: 11.5, color: AppTheme.bodyColor),
+          ),
+          if (isDownloading) ...[
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: state.progress, minHeight: 4),
+          ],
+          if (state.phase == AppUpdatePhase.failed &&
+              state.errorMessage != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              state.errorMessage!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10.5, color: AppTheme.subtleTextColor),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: state.isBusy
+                    ? null
+                    : () => ref
+                          .read(appUpdateControllerProvider.notifier)
+                          .checkForUpdate(),
+                icon: const Icon(LucideIcons.refreshCw, size: 14),
+                label: Text(l10n.checkForUpdates),
+              ),
+              const SizedBox(width: 8),
+              if (update != null &&
+                  state.phase != AppUpdatePhase.manualInstallOpened)
+                FilledButton.icon(
+                  onPressed: state.isBusy
+                      ? null
+                      : () => ref
+                            .read(appUpdateControllerProvider.notifier)
+                            .installUpdate(),
+                  icon: const Icon(LucideIcons.download, size: 14),
+                  label: Text(l10n.updateNow),
+                ),
+              if (update != null && update.dmgUrl == null) ...[
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => ref
+                      .read(appUpdateControllerProvider.notifier)
+                      .openReleasePage(),
+                  child: Text(l10n.viewRelease),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -314,7 +465,10 @@ class _BrandColorSwatch extends StatelessWidget {
               Container(
                 width: 26,
                 height: 26,
-                decoration: BoxDecoration(color: swatch, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: swatch,
+                  shape: BoxShape.circle,
+                ),
                 child: selected
                     ? const Icon(Icons.check, size: 15, color: Colors.white)
                     : null,
@@ -338,11 +492,7 @@ class _BrandColorSwatch extends StatelessWidget {
 }
 
 class _SegmentItem<T> {
-  const _SegmentItem({
-    required this.value,
-    required this.label,
-    this.icon,
-  });
+  const _SegmentItem({required this.value, required this.label, this.icon});
 
   final T value;
   final String label;
@@ -429,7 +579,7 @@ class _ModernSegmentButton<T> extends StatelessWidget {
                     color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.07),
                     blurRadius: 4,
                     offset: const Offset(0, 1.5),
-                  )
+                  ),
                 ]
               : null,
           border: isSelected
@@ -474,4 +624,3 @@ class _ModernSegmentButton<T> extends StatelessWidget {
     );
   }
 }
-

@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/features/notes/domain/markdown_editing.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 浮动格式工具栏(marktext 式):选中文字时浮现在选区上方,
 /// 提供行内格式操作。挂在 Overlay 里,由 notes_page 定位。
@@ -55,37 +56,37 @@ class FloatingFormatToolbar extends StatelessWidget {
             children: [
               _button(
                 LucideIcons.bold,
-                '粗体 (⌘B)',
+                tr('粗体 (⌘B)'),
                 () => _apply((v) => MarkdownEditing.toggleInline(v, '**')),
               ),
               _button(
                 LucideIcons.italic,
-                '斜体 (⌘I)',
+                tr('斜体 (⌘I)'),
                 () => _apply((v) => MarkdownEditing.toggleInline(v, '*')),
               ),
               _button(
                 LucideIcons.strikethrough,
-                '删除线',
+                tr('删除线'),
                 () => _apply((v) => MarkdownEditing.toggleInline(v, '~~')),
               ),
               _button(
                 LucideIcons.code,
-                '行内代码',
+                tr('行内代码'),
                 () => _apply((v) => MarkdownEditing.toggleInline(v, '`')),
               ),
               _button(
                 LucideIcons.link,
-                '链接 (⌘K)',
+                tr('链接 (⌘K)'),
                 () => _apply(MarkdownEditing.insertLink),
               ),
               _button(
                 LucideIcons.image,
-                '插入图片',
+                tr('插入图片'),
                 onPickImage ?? () => _apply(MarkdownEditing.insertImage),
               ),
               _button(
                 LucideIcons.removeFormatting,
-                '清除格式',
+                tr('清除格式'),
                 () => _apply(MarkdownEditing.clearInline),
               ),
             ],
@@ -139,16 +140,16 @@ class NoteInsertMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = <(IconData, String, TextEditingValue Function(TextEditingValue))>[
-      (LucideIcons.heading1, '一级标题', (v) => MarkdownEditing.setHeading(v, 1)),
-      (LucideIcons.heading2, '二级标题', (v) => MarkdownEditing.setHeading(v, 2)),
-      (LucideIcons.heading3, '三级标题', (v) => MarkdownEditing.setHeading(v, 3)),
-      (LucideIcons.textQuote, '引用', (v) => MarkdownEditing.toggleLinePrefix(v, '> ')),
-      (LucideIcons.list, '无序列表', (v) => MarkdownEditing.toggleLinePrefix(v, '- ')),
-      (LucideIcons.listOrdered, '有序列表', MarkdownEditing.toggleOrderedList),
-      (LucideIcons.listTodo, '任务列表', (v) => MarkdownEditing.toggleLinePrefix(v, '- [ ] ')),
+      (LucideIcons.heading1, tr('一级标题'), (v) => MarkdownEditing.setHeading(v, 1)),
+      (LucideIcons.heading2, tr('二级标题'), (v) => MarkdownEditing.setHeading(v, 2)),
+      (LucideIcons.heading3, tr('三级标题'), (v) => MarkdownEditing.setHeading(v, 3)),
+      (LucideIcons.textQuote, tr('引用'), (v) => MarkdownEditing.toggleLinePrefix(v, '> ')),
+      (LucideIcons.list, tr('无序列表'), (v) => MarkdownEditing.toggleLinePrefix(v, '- ')),
+      (LucideIcons.listOrdered, tr('有序列表'), MarkdownEditing.toggleOrderedList),
+      (LucideIcons.listTodo, tr('任务列表'), (v) => MarkdownEditing.toggleLinePrefix(v, '- [ ] ')),
       (
         LucideIcons.table,
-        '表格',
+        tr('表格'),
         (v) => MarkdownEditing.insertBlock(
           v,
           '| 列1 | 列2 |\n| --- | --- |\n|  |  |',
@@ -157,19 +158,19 @@ class NoteInsertMenu extends StatelessWidget {
       ),
       (
         LucideIcons.squareCode,
-        '代码块',
+        tr('代码块'),
         (v) => MarkdownEditing.insertBlock(v, '```\n\n```', caretOffset: 4),
       ),
       (
         LucideIcons.sigma,
-        '公式块',
+        tr('公式块'),
         (v) => MarkdownEditing.insertBlock(v, '\$\$\n\n\$\$', caretOffset: 3),
       ),
-      (LucideIcons.minus, '分隔线', (v) => MarkdownEditing.insertBlock(v, '---')),
-      (LucideIcons.link, '链接', MarkdownEditing.insertLink),
+      (LucideIcons.minus, tr('分隔线'), (v) => MarkdownEditing.insertBlock(v, '---')),
+      (LucideIcons.link, tr('链接'), MarkdownEditing.insertLink),
       (
         LucideIcons.image,
-        '图片…',
+        tr('图片…'),
         (v) {
           // 有选图回调走文件选择器(异步流程自行插入),此处不动文本
           final pick = onPickImage;
@@ -181,7 +182,7 @@ class NoteInsertMenu extends StatelessWidget {
       if (onPickFile != null)
         (
           LucideIcons.paperclip,
-          '文件 / 视频…',
+          tr('文件 / 视频…'),
           (v) {
             onPickFile!();
             return v;
@@ -190,7 +191,7 @@ class NoteInsertMenu extends StatelessWidget {
     ];
 
     return PopupMenuButton<int>(
-      tooltip: '插入',
+      tooltip: tr('插入'),
       position: PopupMenuPosition.under,
       onSelected: (index) => _apply(actions[index].$3),
       itemBuilder: (context) => [

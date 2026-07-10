@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/features/terminal/data/highlight_store.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 打开触发器高亮规则管理弹窗。
 Future<void> showHighlightManager(BuildContext context) async {
@@ -36,7 +37,7 @@ class _HighlightManagerDialog extends StatelessWidget {
         children: [
           Icon(LucideIcons.highlighter300, size: 17, color: AppTheme.brandColor),
           const SizedBox(width: 8),
-          const Text('触发器高亮'),
+          Text(tr('触发器高亮')),
         ],
       ),
       content: SizedBox(
@@ -57,7 +58,7 @@ class _HighlightManagerDialog extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '还没有高亮规则,点「新建」添加',
+                      tr('还没有高亮规则,点「新建」添加'),
                       style: TextStyle(
                         fontSize: 12.5,
                         color: AppTheme.subtleTextColor,
@@ -65,7 +66,7 @@ class _HighlightManagerDialog extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '如把含 ERROR / FAIL 的行标红,便于快速定位',
+                      tr('如把含 ERROR / FAIL 的行标红,便于快速定位'),
                       style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.subtleTextColor,
@@ -87,12 +88,12 @@ class _HighlightManagerDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => _edit(context, null),
-          child: const Text('新建'),
+          child: Text(tr('新建')),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('完成'),
+          child: Text(tr('完成')),
         ),
       ],
     );
@@ -126,9 +127,9 @@ class _HighlightManagerDialog extends StatelessWidget {
         style: TextStyle(fontSize: 12.5, color: AppTheme.headingColor),
       ),
       subtitle: Text(
-        '${rule.isRegex ? '正则' : '包含'} 「${rule.pattern}」'
-        '${rule.wholeLine ? ' · 整行' : ' · 片段'}'
-        '${rule.caseSensitive ? ' · 区分大小写' : ''}',
+        '${rule.isRegex ? tr('正则') : tr('包含')} 「${rule.pattern}」'
+        '${rule.wholeLine ? tr(' · 整行') : tr(' · 片段')}'
+        '${rule.caseSensitive ? tr(' · 区分大小写') : ''}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 10.5, color: AppTheme.subtleTextColor),
@@ -143,12 +144,12 @@ class _HighlightManagerDialog extends StatelessWidget {
                 HighlightStore.upsert(rule.copyWith(enabled: v)),
           ),
           IconButton(
-            tooltip: '编辑',
+            tooltip: tr('编辑'),
             icon: Icon(LucideIcons.penLine300, size: 15),
             onPressed: () => _edit(context, rule),
           ),
           IconButton(
-            tooltip: '删除',
+            tooltip: tr('删除'),
             icon: Icon(LucideIcons.trash300, size: 15, color: AppTheme.errorColor),
             onPressed: () => HighlightStore.remove(rule.id),
           ),
@@ -230,16 +231,16 @@ class _HighlightEditDialogState extends State<_HighlightEditDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.existing == null ? '新建高亮规则' : '编辑高亮规则'),
+      title: Text(widget.existing == null ? tr('新建高亮规则') : tr('编辑高亮规则')),
       content: SizedBox(
         width: 440,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _field(_name, '名称(可空)', '如 错误'),
+            _field(_name, tr('名称(可空)'), tr('如 错误')),
             const SizedBox(height: 10),
-            _field(_pattern, _isRegex ? '正则表达式' : '匹配文本', '如 ERROR'),
+            _field(_pattern, _isRegex ? tr('正则表达式') : tr('匹配文本'), tr('如 ERROR')),
             const SizedBox(height: 14),
             Wrap(
               spacing: 8,
@@ -265,24 +266,24 @@ class _HighlightEditDialogState extends State<_HighlightEditDialog> {
               ],
             ),
             const SizedBox(height: 6),
-            _toggle('正则匹配', _isRegex, (v) => setState(() => _isRegex = v)),
-            _toggle('区分大小写', _caseSensitive,
+            _toggle(tr('正则匹配'), _isRegex, (v) => setState(() => _isRegex = v)),
+            _toggle(tr('区分大小写'), _caseSensitive,
                 (v) => setState(() => _caseSensitive = v)),
-            _toggle('整行上色(关=只给命中片段上色)', _wholeLine,
+            _toggle(tr('整行上色(关=只给命中片段上色)'), _wholeLine,
                 (v) => setState(() => _wholeLine = v)),
-            _toggle('加粗', _bold, (v) => setState(() => _bold = v)),
+            _toggle(tr('加粗'), _bold, (v) => setState(() => _bold = v)),
           ],
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(tr('取消')),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
           onPressed: _save,
-          child: const Text('保存'),
+          child: Text(tr('保存')),
         ),
       ],
     );

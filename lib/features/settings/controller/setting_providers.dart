@@ -29,10 +29,13 @@ class AppLocaleController extends Notifier<AppLocale> {
         orElse: () => AppLocale.en,
       );
     }
+    AppL10n.current = AppL10n.resolve(state);
   }
 
   void setLocale(AppLocale locale) async {
     state = locale;
+    // 同步查表翻译的全局语言(功能页深处不走 provider,读这个静态)
+    AppL10n.current = AppL10n.resolve(locale);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, locale.name);
   }

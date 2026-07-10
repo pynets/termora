@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screen_capturer/screen_capturer.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 截屏服务
 /// macOS: 使用原生 CGWindowListCreateImage + NSPasteboard
@@ -29,17 +30,17 @@ class ScreenshotService {
     }
 
     try {
-      debugPrint('截屏并保存到临时文件');
+      debugPrint(tr('截屏并保存到临时文件'));
       final result = await _channel.invokeMethod<String>('captureScreenToFile');
       if (result != null) {
-        debugPrint('截屏已保存到: $result');
+        debugPrint(tr2('截屏已保存到: {0}', [result]));
       }
       return result;
     } on PlatformException catch (e) {
       if (e.code == 'PERMISSION_DENIED') {
-        throw ScreenshotPermissionException('未赋予屏幕录制权限，无法截屏');
+        throw ScreenshotPermissionException(tr('未赋予屏幕录制权限，无法截屏'));
       }
-      debugPrint('原生截屏失败，回退: $e');
+      debugPrint(tr2('原生截屏失败，回退: {0}', [e]));
       final data = await captureFullScreenSilent();
       if (data == null) return null;
       final tempPath =
@@ -47,7 +48,7 @@ class ScreenshotService {
       await File(tempPath).writeAsBytes(data);
       return tempPath;
     } catch (e) {
-      debugPrint('原生截屏异常: $e');
+      debugPrint(tr2('原生截屏异常: {0}', [e]));
       return null;
     }
   }
@@ -62,10 +63,10 @@ class ScreenshotService {
           'copyImageToClipboard',
           pngData,
         );
-        debugPrint('已复制截图到剪贴板 (原生 NSPasteboard)');
+        debugPrint(tr('已复制截图到剪贴板 (原生 NSPasteboard)'));
         return result ?? false;
       } catch (e) {
-        debugPrint('原生剪贴板复制失败: $e');
+        debugPrint(tr2('原生剪贴板复制失败: {0}', [e]));
         return false;
       }
     }
@@ -86,10 +87,10 @@ class ScreenshotService {
         ]);
 
         await tempFile.delete().catchError((_) => tempFile);
-        debugPrint('已复制截图到剪贴板 (Windows PowerShell)');
+        debugPrint(tr('已复制截图到剪贴板 (Windows PowerShell)'));
         return true;
       } catch (e) {
-        debugPrint('Windows 剪贴板复制失败: $e');
+        debugPrint(tr2('Windows 剪贴板复制失败: {0}', [e]));
         return false;
       }
     }
@@ -116,13 +117,13 @@ class ScreenshotService {
         }
         return null;
       } catch (e) {
-        debugPrint('Windows 区域截屏异常: $e');
+        debugPrint(tr2('Windows 区域截屏异常: {0}', [e]));
         return null;
       }
     }
 
     if (!Platform.isMacOS) {
-      debugPrint('截屏功能不支持此平台');
+      debugPrint(tr('截屏功能不支持此平台'));
       return null;
     }
 
@@ -143,12 +144,12 @@ class ScreenshotService {
       } else {
         final stderr = result.stderr.toString();
         if (stderr.contains('could not create image from rect')) {
-          throw ScreenshotPermissionException('未赋予屏幕录制权限或未选择区域');
+          throw ScreenshotPermissionException(tr('未赋予屏幕录制权限或未选择区域'));
         }
       }
     } catch (e) {
       if (e is ScreenshotPermissionException) rethrow;
-      debugPrint('区域截屏异常: $e');
+      debugPrint(tr2('区域截屏异常: {0}', [e]));
     }
     return null;
   }
@@ -220,9 +221,9 @@ public class DpiHelper {
           return bytes;
         }
       }
-      debugPrint('Windows 静默截图失败: ${result.stderr}');
+      debugPrint(tr2('Windows 静默截图失败: {0}', [result.stderr]));
     } catch (e) {
-      debugPrint('Windows 静默截图异常: $e');
+      debugPrint(tr2('Windows 静默截图异常: {0}', [e]));
     }
     return null;
   }
@@ -233,11 +234,11 @@ public class DpiHelper {
     try {
       final result = await _channel.invokeMethod<Uint8List>('captureScreen');
       if (result != null) {
-        debugPrint('原生截图成功，大小: ${result.length} bytes');
+        debugPrint(tr2('原生截图成功，大小: {0} bytes', [result.length]));
       }
       return result;
     } catch (e) {
-      debugPrint('原生截图失败，回退到 screencapture CLI: $e');
+      debugPrint(tr2('原生截图失败，回退到 screencapture CLI: {0}', [e]));
       // 回退到 CLI
       return _captureScreenCLI();
     }
@@ -261,7 +262,7 @@ public class DpiHelper {
         }
       }
     } catch (e) {
-      debugPrint('screencapture CLI 截图失败: $e');
+      debugPrint(tr2('screencapture CLI 截图失败: {0}', [e]));
     }
     return null;
   }
@@ -295,7 +296,7 @@ public class DpiHelper {
         }
       }
     } catch (e) {
-      debugPrint('窗口截屏失败: $e');
+      debugPrint(tr2('窗口截屏失败: {0}', [e]));
     }
     return null;
   }
@@ -315,7 +316,7 @@ public class DpiHelper {
         final home = Platform.environment['HOME'] ?? '';
         desktopPath = '$home/Desktop';
       } else {
-        debugPrint('截屏保存仅支持 macOS/Windows');
+        debugPrint(tr('截屏保存仅支持 macOS/Windows'));
         return null;
       }
 
@@ -326,10 +327,10 @@ public class DpiHelper {
       final file = File(filePath);
       await file.writeAsBytes(imageData);
 
-      debugPrint('截图已保存到: $filePath');
+      debugPrint(tr2('截图已保存到: {0}', [filePath]));
       return filePath;
     } catch (e) {
-      debugPrint('保存截图失败: $e');
+      debugPrint(tr2('保存截图失败: {0}', [e]));
       return null;
     }
   }
@@ -357,7 +358,7 @@ public class DpiHelper {
         );
       }).toList();
     } catch (e) {
-      debugPrint('获取窗口列表失败: $e');
+      debugPrint(tr2('获取窗口列表失败: {0}', [e]));
       return [];
     }
   }

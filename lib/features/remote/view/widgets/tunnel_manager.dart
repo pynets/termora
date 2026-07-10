@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/features/remote/data/tunnel_service.dart';
 import 'package:termora/features/remote/domain/ssh_host.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 打开某主机的端口转发管理弹窗。
 Future<void> showTunnelManager(BuildContext context, SshHost host) async {
@@ -29,7 +30,7 @@ class _TunnelManagerDialog extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '${host.name} · 端口转发',
+              tr2('{0} · 端口转发', [host.name]),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -55,7 +56,7 @@ class _TunnelManagerDialog extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '还没有端口转发,点「新建」添加',
+                      tr('还没有端口转发,点「新建」添加'),
                       style: TextStyle(
                         fontSize: 12.5,
                         color: AppTheme.subtleTextColor,
@@ -63,7 +64,7 @@ class _TunnelManagerDialog extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '转发复用该主机已连接的 SSH 会话,请先在左侧连接一次',
+                      tr('转发复用该主机已连接的 SSH 会话,请先在左侧连接一次'),
                       style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.subtleTextColor,
@@ -97,12 +98,12 @@ class _TunnelManagerDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => _edit(context, null),
-          child: const Text('新建'),
+          child: Text(tr('新建')),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('完成'),
+          child: Text(tr('完成')),
         ),
       ],
     );
@@ -146,7 +147,7 @@ class _TunnelManagerDialog extends StatelessWidget {
               style: TextStyle(fontSize: 10.5, color: AppTheme.errorColor),
             )
           : Text(
-              running ? '运行中' : '已停止',
+              running ? tr('运行中') : tr('已停止'),
               style: TextStyle(
                 fontSize: 10.5,
                 color: running ? AppTheme.successColor : AppTheme.subtleTextColor,
@@ -156,7 +157,7 @@ class _TunnelManagerDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            tooltip: running ? '停止' : '启动',
+            tooltip: running ? tr('停止') : tr('启动'),
             icon: Icon(
               running ? LucideIcons.circleStop300 : LucideIcons.play300,
               size: 16,
@@ -171,12 +172,12 @@ class _TunnelManagerDialog extends StatelessWidget {
             },
           ),
           IconButton(
-            tooltip: '编辑',
+            tooltip: tr('编辑'),
             icon: Icon(LucideIcons.penLine300, size: 15),
             onPressed: running ? null : () => _edit(context, tunnel),
           ),
           IconButton(
-            tooltip: '删除',
+            tooltip: tr('删除'),
             icon: Icon(
               LucideIcons.trash300,
               size: 15,
@@ -269,7 +270,7 @@ class _TunnelEditDialogState extends State<_TunnelEditDialog> {
   Widget build(BuildContext context) {
     final isDynamic = _type == TunnelType.dynamic;
     return AlertDialog(
-      title: Text(widget.existing == null ? '新建端口转发' : '编辑端口转发'),
+      title: Text(widget.existing == null ? tr('新建端口转发') : tr('编辑端口转发')),
       content: SizedBox(
         width: 420,
         child: Column(
@@ -290,19 +291,19 @@ class _TunnelEditDialogState extends State<_TunnelEditDialog> {
               children: [
                 Expanded(
                   flex: 2,
-                  child: _field(_bindAddr, '绑定地址(可空)', 'localhost'),
+                  child: _field(_bindAddr, tr('绑定地址(可空)'), 'localhost'),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: _field(_bindPort, '本地端口', '如 8080')),
+                Expanded(child: _field(_bindPort, tr('本地端口'), tr('如 8080'))),
               ],
             ),
             if (!isDynamic) ...[
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(flex: 2, child: _field(_destHost, '目标主机', 'localhost')),
+                  Expanded(flex: 2, child: _field(_destHost, tr('目标主机'), 'localhost')),
                   const SizedBox(width: 8),
-                  Expanded(child: _field(_destPort, '目标端口', '如 5432')),
+                  Expanded(child: _field(_destPort, tr('目标端口'), tr('如 5432'))),
                 ],
               ),
             ],
@@ -321,12 +322,12 @@ class _TunnelEditDialogState extends State<_TunnelEditDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(tr('取消')),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
           onPressed: _save,
-          child: const Text('保存'),
+          child: Text(tr('保存')),
         ),
       ],
     );
@@ -335,12 +336,14 @@ class _TunnelEditDialogState extends State<_TunnelEditDialog> {
   String _hint() {
     switch (_type) {
       case TunnelType.local:
-        return '本地转发:访问本机「绑定端口」→ 经服务器 → 到「目标主机:端口」。'
-            '如把远端数据库映射到本地 5432。';
+        return tr(
+          '本地转发:访问本机「绑定端口」→ 经服务器 → 到「目标主机:端口」。'
+          '如把远端数据库映射到本地 5432。',
+        );
       case TunnelType.remote:
-        return '远程转发:服务器上的「绑定端口」→ 经本机 → 到「目标主机:端口」。';
+        return tr('远程转发:服务器上的「绑定端口」→ 经本机 → 到「目标主机:端口」。');
       case TunnelType.dynamic:
-        return 'SOCKS 代理:本机「绑定端口」作为 SOCKS5 代理,流量经服务器出网。';
+        return tr('SOCKS 代理:本机「绑定端口」作为 SOCKS5 代理,流量经服务器出网。');
     }
   }
 

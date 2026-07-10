@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/features/database/domain/data_export.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 数据导出向导 — 选格式后落盘或复制到剪贴板
 Future<void> showExportDialog(
@@ -48,7 +49,7 @@ class _ExportDialogState extends State<_ExportDialog> {
         tableName: widget.tableName,
       );
       final path = await FilePicker.saveFile(
-        dialogTitle: '导出为 ${_format.label}',
+        dialogTitle: tr2('导出为 {0}', [_format.label]),
         fileName: '${widget.tableName}.${_format.extension}',
       );
       if (path == null) {
@@ -63,7 +64,7 @@ class _ExportDialogState extends State<_ExportDialog> {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('已导出 ${widget.output.rows.length} 行到 $finalPath'),
+          content: Text(tr2('已导出 {0} 行到 {1}', [widget.output.rows.length, finalPath])),
           duration: const Duration(seconds: 3),
         ),
       );
@@ -71,7 +72,7 @@ class _ExportDialogState extends State<_ExportDialog> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _message = '导出失败: $e';
+        _message = tr2('导出失败: {0}', [e]);
       });
     }
   }
@@ -87,7 +88,7 @@ class _ExportDialogState extends State<_ExportDialog> {
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('已复制 ${_format.label} 到剪贴板'),
+        content: Text(tr2('已复制 {0} 到剪贴板', [_format.label])),
         duration: const Duration(seconds: 2),
       ),
     );
@@ -97,19 +98,19 @@ class _ExportDialogState extends State<_ExportDialog> {
     return switch (format) {
       ExportFormat.csv => (
           icon: LucideIcons.fileSpreadsheet,
-          subtitle: '逗号分隔数据 (.csv)',
+          subtitle: tr('逗号分隔数据 (.csv)'),
         ),
       ExportFormat.json => (
           icon: LucideIcons.fileCode,
-          subtitle: '结构化对象 (.json)',
+          subtitle: tr('结构化对象 (.json)'),
         ),
       ExportFormat.sqlInsert => (
           icon: LucideIcons.database,
-          subtitle: 'INSERT 语句 (.sql)',
+          subtitle: tr('INSERT 语句 (.sql)'),
         ),
       ExportFormat.markdown => (
           icon: LucideIcons.table2,
-          subtitle: 'GitHub 表格 (.md)',
+          subtitle: tr('GitHub 表格 (.md)'),
         ),
     };
   }
@@ -225,7 +226,7 @@ class _ExportDialogState extends State<_ExportDialog> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '导出数据',
+                          tr('导出数据'),
                           style: TextStyle(
                             fontSize: 15.5,
                             fontWeight: FontWeight.w700,
@@ -234,7 +235,7 @@ class _ExportDialogState extends State<_ExportDialog> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '选择适合的格式导出表「${widget.tableName}」内容',
+                          tr2('选择适合的格式导出表「{0}」内容', [widget.tableName]),
                           style: TextStyle(
                             fontSize: 11.5,
                             color: AppTheme.subtleTextColor,
@@ -252,7 +253,7 @@ class _ExportDialogState extends State<_ExportDialog> {
                       border: Border.all(color: AppTheme.borderColor),
                     ),
                     child: Text(
-                      '共 ${widget.output.rows.length} 行',
+                      tr2('共 {0} 行', [widget.output.rows.length]),
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w500,
@@ -309,12 +310,12 @@ class _ExportDialogState extends State<_ExportDialog> {
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _copyToClipboard,
                     icon: const Icon(LucideIcons.clipboardCopy, size: 14),
-                    label: const Text('复制到剪贴板'),
+                    label: Text(tr('复制到剪贴板')),
                   ),
                   const Spacer(),
                   TextButton(
                     onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
+                    child: Text(tr('取消')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
@@ -326,7 +327,7 @@ class _ExportDialogState extends State<_ExportDialog> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(LucideIcons.save, size: 14),
-                    label: const Text('保存到文件'),
+                    label: Text(tr('保存到文件')),
                   ),
                 ],
               ),

@@ -13,6 +13,7 @@ import 'package:termora/core/services/screenshot_service.dart';
 import 'screenshot/screenshot_components.dart';
 import 'package:toastification/toastification.dart';
 import 'package:termora/core/widgets/app_toast.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 export 'screenshot/screenshot_components.dart' show DrawingTool, DrawingShape;
 
@@ -161,7 +162,7 @@ class _ScreenshotEditorState extends State<ScreenshotEditor> {
             style: ToastificationStyle.flat,
             applyBlurEffect: true,
             title: Text(
-              '已复制色值: $hex',
+              tr2('已复制色值: {0}', [hex]),
               style: const TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w400,
@@ -234,7 +235,7 @@ class _ScreenshotEditorState extends State<ScreenshotEditor> {
       }).toList();
 
       debugPrint(
-        '窗口检测: ${_logicalWindowBounds.length} 个窗口, 屏幕: $screenSize, 图片: ${_image!.width}x${_image!.height}',
+        tr2('窗口检测: {0} 个窗口, 屏幕: {1}, 图片: {2}x{3}', [_logicalWindowBounds.length, screenSize, _image!.width, _image!.height]),
       );
     });
   }
@@ -526,9 +527,9 @@ class _ScreenshotEditorState extends State<ScreenshotEditor> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _infoRow('坐标', '$px, $py'),
+                      _infoRow(tr('坐标'), '$px, $py'),
                       const SizedBox(height: 6),
-                      _infoRow('色值', hex),
+                      _infoRow(tr('色值'), hex),
                       const SizedBox(height: 8),
                       const Text(
                         '按 ⌘+C 复制色值',
@@ -1189,49 +1190,49 @@ class _ScreenshotEditorState extends State<ScreenshotEditor> {
                   children: [
                     ToolButton(
                       icon: Icons.crop_square_outlined,
-                      tooltip: '矩形 (R)',
+                      tooltip: tr('矩形 (R)'),
                       isSelected: _currentTool == DrawingTool.rectangle,
                       onTap: () => _selectTool(DrawingTool.rectangle),
                     ),
                     ToolButton(
                       icon: Icons.radio_button_unchecked,
-                      tooltip: '圆形 (O)',
+                      tooltip: tr('圆形 (O)'),
                       isSelected: _currentTool == DrawingTool.circle,
                       onTap: () => _selectTool(DrawingTool.circle),
                     ),
                     ToolButton(
                       icon: Icons.north_east,
-                      tooltip: '箭头 (A)',
+                      tooltip: tr('箭头 (A)'),
                       isSelected: _currentTool == DrawingTool.arrow,
                       onTap: () => _selectTool(DrawingTool.arrow),
                     ),
                     ToolButton(
                       icon: Icons.horizontal_rule,
-                      tooltip: '线条 (L)',
+                      tooltip: tr('线条 (L)'),
                       isSelected: _currentTool == DrawingTool.line,
                       onTap: () => _selectTool(DrawingTool.line),
                     ),
                     ToolButton(
                       icon: Icons.edit_outlined,
-                      tooltip: '画笔 (P)',
+                      tooltip: tr('画笔 (P)'),
                       isSelected: _currentTool == DrawingTool.pen,
                       onTap: () => _selectTool(DrawingTool.pen),
                     ),
                     ToolButton(
                       icon: Icons.blur_on,
-                      tooltip: '马赛克 (M)',
+                      tooltip: tr('马赛克 (M)'),
                       isSelected: _currentTool == DrawingTool.mosaic,
                       onTap: () => _selectTool(DrawingTool.mosaic),
                     ),
                     ToolButton(
                       icon: Icons.title,
-                      tooltip: '文字 (T)',
+                      tooltip: tr('文字 (T)'),
                       isSelected: _currentTool == DrawingTool.text,
                       onTap: () => _selectTool(DrawingTool.text),
                     ),
                     ToolButton(
                       icon: Icons.pin,
-                      tooltip: '编号 $_nextNumber (N)',
+                      tooltip: tr2('编号 {0} (N)', [_nextNumber]),
                       isSelected: _currentTool == DrawingTool.number,
                       onTap: () => _selectTool(DrawingTool.number),
                     ),
@@ -1239,7 +1240,7 @@ class _ScreenshotEditorState extends State<ScreenshotEditor> {
                     // 线宽调节
                     ToolButton(
                       icon: Icons.line_weight,
-                      tooltip: '线宽 ${_currentStrokeWidth.toStringAsFixed(0)}',
+                      tooltip: tr2('线宽 {0}', [_currentStrokeWidth.toStringAsFixed(0)]),
                       isEnabled: _supportsStrokeWidth,
                       isSelected: _showStrokePopover,
                       onTap: () => setState(
@@ -1263,53 +1264,53 @@ class _ScreenshotEditorState extends State<ScreenshotEditor> {
                     const ToolDivider(),
                     ToolButton(
                       icon: Icons.undo,
-                      tooltip: '撤销 (⌘Z)',
+                      tooltip: tr('撤销 (⌘Z)'),
                       onTap: _shapes.isNotEmpty ? _undo : null,
                       isEnabled: _shapes.isNotEmpty,
                     ),
                     ToolButton(
                       icon: Icons.redo,
-                      tooltip: '重做 (⌘⇧Z)',
+                      tooltip: tr('重做 (⌘⇧Z)'),
                       onTap: _redoStack.isNotEmpty ? _redo : null,
                       isEnabled: _redoStack.isNotEmpty,
                     ),
                     ToolButton(
                       icon: Icons.delete_outline,
-                      tooltip: '清空所有标注',
+                      tooltip: tr('清空所有标注'),
                       onTap: _shapes.isNotEmpty ? _clearAll : null,
                       isEnabled: _shapes.isNotEmpty,
                     ),
                     const ToolDivider(),
                     ToolButton(
                       icon: Icons.push_pin_outlined,
-                      tooltip: '贴图 - 置顶浮窗',
+                      tooltip: tr('贴图 - 置顶浮窗'),
                       onTap: _pinToScreen,
                     ),
                     ToolButton(
                       icon: Icons.document_scanner_outlined,
-                      tooltip: 'OCR 文字识别',
+                      tooltip: tr('OCR 文字识别'),
                       onTap: _performOCR,
                     ),
                     ToolButton(
                       icon: Icons.content_copy,
-                      tooltip: '复制到剪贴板',
+                      tooltip: tr('复制到剪贴板'),
                       onTap: _copyToClipboard,
                     ),
                     ToolButton(
                       icon: Icons.save_alt,
-                      tooltip: '保存到桌面',
+                      tooltip: tr('保存到桌面'),
                       onTap: _saveToDesktop,
                     ),
                     const ToolDivider(),
                     ToolButton(
                       icon: Icons.close,
-                      tooltip: '取消 (Esc)',
+                      tooltip: tr('取消 (Esc)'),
                       onTap: widget.onCancel,
                       color: ScreenshotStyle.danger,
                     ),
                     ToolButton(
                       icon: Icons.check,
-                      tooltip: '确认 (Enter)',
+                      tooltip: tr('确认 (Enter)'),
                       onTap: _confirmSelection,
                       color: ScreenshotStyle.success,
                     ),

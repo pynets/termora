@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 变量管理弹窗 — 编辑全部 `${name}` 变量,返回完整映射(取消返回 null)
 Future<Map<String, String>?> showVariablesDialog(
@@ -11,7 +12,7 @@ Future<Map<String, String>?> showVariablesDialog(
   return showDialog<Map<String, String>>(
     context: context,
     builder: (context) => _VariablesDialog(
-      title: 'SQL 变量',
+      title: tr('SQL 变量'),
       description: '在 SQL 中用 \${变量名} 引用,执行时自动替换',
       initial: variables,
       allowAddRemove: true,
@@ -158,7 +159,7 @@ class _VariablesDialogState extends State<_VariablesDialog> {
                     onPressed: () =>
                         setState(() => _rows.add(_VariableRow('', ''))),
                     icon: const Icon(LucideIcons.plus, size: 13),
-                    label: const Text('添加变量', style: TextStyle(fontSize: 12)),
+                    label: Text(tr('添加变量'), style: TextStyle(fontSize: 12)),
                   ),
                 ),
               ],
@@ -168,12 +169,12 @@ class _VariablesDialogState extends State<_VariablesDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
+                    child: Text(tr('取消')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed: () => Navigator.of(context).pop(_collect()),
-                    child: Text(widget.allowAddRemove ? '保存' : '执行'),
+                    child: Text(widget.allowAddRemove ? tr('保存') : tr('执行')),
                   ),
                 ],
               ),
@@ -214,7 +215,7 @@ class _VariablesDialogState extends State<_VariablesDialog> {
               controller: row.name,
               readOnly: !widget.allowAddRemove,
               style: mono,
-              decoration: decoration('变量名'),
+              decoration: decoration(tr('变量名')),
             ),
           ),
           Padding(
@@ -230,12 +231,12 @@ class _VariablesDialogState extends State<_VariablesDialog> {
               controller: row.value,
               autofocus: !widget.allowAddRemove && index == 0,
               style: mono,
-              decoration: decoration('值'),
+              decoration: decoration(tr('值')),
             ),
           ),
           if (widget.allowAddRemove)
             IconButton(
-              tooltip: '删除',
+              tooltip: tr('删除'),
               visualDensity: VisualDensity.compact,
               icon: Icon(LucideIcons.x, size: 13, color: AppTheme.subtleTextColor),
               onPressed: () => setState(() => _rows.removeAt(index).dispose()),

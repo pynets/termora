@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 数据库引擎类型
 enum DbEngine {
@@ -117,7 +118,7 @@ class DbConnectionConfig {
 
     return DbConnectionConfig(
       id: json['id'] as String,
-      name: json['name'] as String? ?? '未命名连接',
+      name: json['name'] as String? ?? tr('未命名连接'),
       engine: DbEngine.fromName(json['engine'] as String?),
       host: json['host'] as String? ?? 'localhost',
       port: (json['port'] as num?)?.toInt() ?? 5432,
@@ -245,10 +246,12 @@ enum DbFilterOp {
   isNotNull('IS NOT NULL', '不为空'),
   inList('IN', '在列表中');
 
-  const DbFilterOp(this.symbol, this.label);
+  const DbFilterOp(this.symbol, this.labelZh);
 
   final String symbol;
-  final String label;
+  final String labelZh;
+
+  String get label => AppL10n.tr(labelZh);
 
   /// 是否需要输入值(IS NULL / IS NOT NULL 不需要)
   bool get needsValue => this != isNull && this != isNotNull;

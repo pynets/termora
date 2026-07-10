@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/features/notes/domain/markdown_parser.dart';
 import 'package:termora/features/notes/domain/markdown_table_edit.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 块式编辑器里的可编辑表格:点单元格就地改,Tab/Enter 在格间移动,
 /// 最后一格按 Tab 自动加行;hover 出现加行/加列/源码按钮。
@@ -244,9 +245,9 @@ class _EditableTableBlockState extends State<EditableTableBlock> {
 
     return Row(
       children: [
-        action(LucideIcons.plus, '行', _addRow),
-        action(LucideIcons.plus, '列', _addColumn),
-        action(LucideIcons.code, '源码', () {
+        action(LucideIcons.plus, tr('行'), _addRow),
+        action(LucideIcons.plus, tr('列'), _addColumn),
+        action(LucideIcons.code, tr('源码'), () {
           _commitCell();
           widget.onEditSource();
         }),

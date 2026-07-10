@@ -4,6 +4,7 @@ import 'package:termora/features/database/data/clickhouse_service.dart';
 import 'package:termora/features/database/data/postgres_service.dart';
 import 'package:termora/features/database/data/sqlite_service.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 统一连接句柄 — 屏蔽底层驱动差异
 /// (postgres 长连接 / clickhouse 无状态 HTTP / sqlite 本地文件句柄)
@@ -204,7 +205,7 @@ class DbService {
         output: output,
         session: session,
       ),
-      ChConnection _ => throw UnsupportedError('ClickHouse 连接为只读,不支持编辑'),
+      ChConnection _ => throw UnsupportedError(tr('ClickHouse 连接为只读,不支持编辑')),
       SqliteConnection s => SqliteService.applyChanges(
         s.raw,
         context: context,

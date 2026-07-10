@@ -14,6 +14,7 @@ import 'package:toastification/toastification.dart';
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/widgets/app_toast.dart';
 import 'package:termora/features/notes/domain/markdown_parser.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 预览版心最大宽度(marktext 的居中窄栏排版)
 const double _kContentMaxWidth = 760;
@@ -40,7 +41,7 @@ class MarkdownPreview extends StatelessWidget {
     if (blocks.isEmpty) {
       return Center(
         child: Text(
-          '暂无内容',
+          tr('暂无内容'),
           style: TextStyle(fontSize: 13, color: AppTheme.subtleTextColor),
         ),
       );
@@ -462,7 +463,7 @@ class MarkdownBlockView extends StatelessWidget {
                 if (missing) ...[
                   const SizedBox(width: 5),
                   Text(
-                    '(文件缺失)',
+                    tr('(文件缺失)'),
                     style: TextStyle(
                       fontSize: 11,
                       color: AppTheme.subtleTextColor,
@@ -563,7 +564,7 @@ class MarkdownBlockView extends StatelessWidget {
           Icon(LucideIcons.image, size: 13, color: AppTheme.subtleTextColor),
           const SizedBox(width: 5),
           Text(
-            s.text.isEmpty ? '图片' : s.text,
+            s.text.isEmpty ? tr('图片') : s.text,
             style: TextStyle(fontSize: 12, color: AppTheme.subtleTextColor),
           ),
         ],
@@ -674,7 +675,7 @@ class _CodeBlockView extends StatelessWidget {
                 ),
                 const Spacer(),
                 IconButton(
-                  tooltip: '复制代码',
+                  tooltip: tr('复制代码'),
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
                     LucideIcons.copy,

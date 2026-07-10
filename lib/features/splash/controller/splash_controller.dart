@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:termora/core/services/tray_service.dart';
 import 'package:termora/core/services/update_service.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 启动页状态
 class SplashState {
@@ -50,28 +51,28 @@ class SplashController extends Notifier<SplashState> {
   /// 由用户在升级卡片上选择「立即升级 / 稍后」。
   Future<SplashResult?> initializeApp() async {
     try {
-      state = state.copyWith(statusText: '正在初始化系统基础服务...');
+      state = state.copyWith(statusText: tr('正在初始化系统基础服务...'));
       await Future.delayed(const Duration(milliseconds: 200));
 
-      state = state.copyWith(statusText: '正在加载系统托盘与快捷键...');
+      state = state.copyWith(statusText: tr('正在加载系统托盘与快捷键...'));
       await TrayService.instance.initialize();
 
-      state = state.copyWith(statusText: '正在检查更新...');
+      state = state.copyWith(statusText: tr('正在检查更新...'));
       // 3 秒内查 GitHub Release;网络失败/超时静默跳过,不挡启动
       final update = await UpdateService.checkForUpdate();
       if (update != null) {
-        state = state.copyWith(update: update, statusText: '发现新版本');
+        state = state.copyWith(update: update, statusText: tr('发现新版本'));
         return null; // 停在启动页等用户选择
       }
 
-      state = state.copyWith(statusText: '正在准备工作空间...');
+      state = state.copyWith(statusText: tr('正在准备工作空间...'));
       await Future.delayed(const Duration(milliseconds: 200));
 
       return SplashResult.navigateToHome;
     } catch (e) {
-      if (kDebugMode) debugPrint('SplashController 初始化失败: $e');
+      if (kDebugMode) debugPrint(tr2('SplashController 初始化失败: {0}', [e]));
       state = SplashState(
-        statusText: '初始化系统服务异常: $e',
+        statusText: tr2('初始化系统服务异常: {0}', [e]),
         hasError: true,
       );
       return null;
@@ -80,7 +81,7 @@ class SplashController extends Notifier<SplashState> {
 
   /// 跳过本次升级,继续进入应用。
   SplashResult skipUpdate() {
-    state = state.copyWith(clearUpdate: true, statusText: '正在准备工作空间...');
+    state = state.copyWith(clearUpdate: true, statusText: tr('正在准备工作空间...'));
     return SplashResult.navigateToHome;
   }
 
@@ -96,7 +97,7 @@ class SplashController extends Notifier<SplashState> {
     try {
       state = state.copyWith(
         updateProgress: 0,
-        statusText: '正在下载 ${update.tagName}...',
+        statusText: tr2('正在下载 {0}...', [update.tagName]),
       );
       var lastShown = -1;
       final dmg = await UpdateService.downloadDmg(update, (p) {
@@ -105,12 +106,12 @@ class SplashController extends Notifier<SplashState> {
           lastShown = pct;
           state = state.copyWith(
             updateProgress: p,
-            statusText: '正在下载 ${update.tagName}... $pct%',
+            statusText: tr2('正在下载 {0}... {1}%', [update.tagName, pct]),
           );
         }
       });
 
-      state = state.copyWith(updateProgress: 1, statusText: '正在安装更新...');
+      state = state.copyWith(updateProgress: 1, statusText: tr('正在安装更新...'));
       final ok = await UpdateService.installAndRelaunch(dmg);
       // 走到这里说明自动替换没成功(成功时进程已重启退出)
       if (!ok) {
@@ -118,17 +119,17 @@ class SplashController extends Notifier<SplashState> {
         state = state.copyWith(
           clearUpdate: true,
           clearProgress: true,
-          statusText: '已打开安装包,请手动拖入 Applications 完成升级',
+          statusText: tr('已打开安装包,请手动拖入 Applications 完成升级'),
         );
         await Future.delayed(const Duration(milliseconds: 1200));
       }
       return SplashResult.navigateToHome;
     } catch (e) {
-      if (kDebugMode) debugPrint('升级失败: $e');
+      if (kDebugMode) debugPrint(tr2('升级失败: {0}', [e]));
       state = state.copyWith(
         clearUpdate: true,
         clearProgress: true,
-        statusText: '升级失败,已跳过:$e',
+        statusText: tr2('升级失败,已跳过:{0}', [e]),
       );
       await Future.delayed(const Duration(milliseconds: 1200));
       return SplashResult.navigateToHome;
@@ -137,7 +138,7 @@ class SplashController extends Notifier<SplashState> {
 
   /// 异常重试
   Future<SplashResult?> retry() async {
-    state = const SplashState(statusText: '正在重新尝试初始化...');
+    state = SplashState(statusText: tr('正在重新尝试初始化...'));
     return initializeApp();
   }
 }

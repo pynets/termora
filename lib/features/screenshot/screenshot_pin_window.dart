@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 截图贴图浮窗 — 置顶可拖动的截图预览小窗口
 /// 由 desktop_multi_window 创建的子窗口
@@ -42,7 +43,7 @@ class _ScreenshotPinWindowState extends State<ScreenshotPinWindow> {
       final file = File(widget.imagePath);
       if (!await file.exists()) {
         setState(() {
-          _error = '贴图文件不存在';
+          _error = tr('贴图文件不存在');
           _isLoading = false;
         });
         return;
@@ -77,7 +78,7 @@ class _ScreenshotPinWindowState extends State<ScreenshotPinWindow> {
             'height': logicalHeight,
           });
         } catch (e) {
-          debugPrint('贴图窗口 present 失败: $e');
+          debugPrint(tr2('贴图窗口 present 失败: {0}', [e]));
           // 回退：直接 show
           try {
             await widget.windowController.show();
@@ -86,7 +87,7 @@ class _ScreenshotPinWindowState extends State<ScreenshotPinWindow> {
       });
     } catch (e) {
       setState(() {
-        _error = '加载贴图失败: $e';
+        _error = tr2('加载贴图失败: {0}', [e]);
         _isLoading = false;
       });
     }
@@ -96,7 +97,7 @@ class _ScreenshotPinWindowState extends State<ScreenshotPinWindow> {
     try {
       await _channel.invokeMethod('close');
     } catch (e) {
-      debugPrint('关闭贴图窗口失败: $e');
+      debugPrint(tr2('关闭贴图窗口失败: {0}', [e]));
       try {
         await widget.windowController.hide();
       } catch (_) {}
@@ -119,13 +120,13 @@ class _ScreenshotPinWindowState extends State<ScreenshotPinWindow> {
               const Icon(Icons.error_outline, color: Colors.red, size: 32),
               const SizedBox(height: 8),
               Text(
-                _error ?? '未知错误',
+                _error ?? tr('未知错误'),
                 style: const TextStyle(color: Colors.white, fontSize: 13),
               ),
               const SizedBox(height: 8),
               TextButton(
                 onPressed: _closeWindow,
-                child: const Text('关闭'),
+                child: Text(tr('关闭')),
               ),
             ],
           ),
@@ -191,7 +192,7 @@ class _ScreenshotPinWindowState extends State<ScreenshotPinWindow> {
                     children: [
                       _PinToolButton(
                         icon: Icons.close,
-                        tooltip: '关闭贴图',
+                        tooltip: tr('关闭贴图'),
                         onTap: _closeWindow,
                       ),
                       const SizedBox(width: 4),

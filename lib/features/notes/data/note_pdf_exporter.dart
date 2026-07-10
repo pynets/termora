@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:termora/features/notes/domain/markdown_parser.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 笔记导出 PDF(marktext 的 Export PDF)— AST → pdf 组件排版。
 /// 中文必须内嵌字体:优先加载系统 CJK TTF(macOS 的 Arial Unicode),
@@ -236,7 +237,7 @@ class NotePdfExporter {
     return [
       for (final s in spans)
         pw.TextSpan(
-          text: s.imageUrl != null ? '[图片 ${s.text}]' : s.text,
+          text: s.imageUrl != null ? tr2('[图片 {0}]', [s.text]) : s.text,
           style: pw.TextStyle(
             font: s.code ? mono.font : null,
             fontFallback: mono.fontFallback,

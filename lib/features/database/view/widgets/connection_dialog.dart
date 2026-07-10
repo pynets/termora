@@ -7,6 +7,7 @@ import 'package:termora/core/utils/file_picker_helper.dart';
 import 'package:termora/core/widgets/glass_menu.dart';
 import 'package:termora/features/database/data/db_service.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 打开连接配置弹窗。返回保存后的配置(取消返回 null)。
 Future<DbConnectionConfig?> showConnectionDialog(
@@ -179,14 +180,14 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
       setState(() {
         _testing = false;
         _testOk = true;
-        _testResult = '连接成功 · ${config.engine.label} $version';
+        _testResult = tr2('连接成功 · {0} {1}', [config.engine.label, version]);
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _testing = false;
         _testOk = false;
-        _testResult = '连接失败: $e';
+        _testResult = tr2('连接失败: {0}', [e]);
       });
     }
   }
@@ -207,7 +208,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                   Icon(LucideIcons.database, size: 18, color: AppTheme.brandColor),
                   const SizedBox(width: 8),
                   Text(
-                    widget.existing == null ? '新建连接' : '编辑连接',
+                    widget.existing == null ? tr('新建连接') : tr('编辑连接'),
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
@@ -225,7 +226,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                     children: [
                       // 数据库类型
                       Text(
-                        '类型',
+                        tr('类型'),
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
@@ -271,18 +272,18 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                       ),
                       const SizedBox(height: 12),
                       _field(
-                        '连接名称',
+                        tr('连接名称'),
                         _name,
-                        hint: _engine.isFileBased ? '默认: 文件名' : '默认: 数据库@主机',
+                        hint: _engine.isFileBased ? tr('默认: 文件名') : tr('默认: 数据库@主机'),
                       ),
                       const SizedBox(height: 10),
                       if (_engine.isFileBased)
                         _field(
-                          '数据库文件',
+                          tr('数据库文件'),
                           _database,
-                          hint: '选择 .db / .sqlite 文件',
+                          hint: tr('选择 .db / .sqlite 文件'),
                           suffix: IconButton(
-                            tooltip: '选择数据库文件',
+                            tooltip: tr('选择数据库文件'),
                             icon: Icon(
                               LucideIcons.folderOpen300,
                               size: 15,
@@ -290,27 +291,27 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                             ),
                             splashRadius: 14,
                             onPressed: () =>
-                                _pickFile(_database, '选择 SQLite 数据库文件'),
+                                _pickFile(_database, tr('选择 SQLite 数据库文件')),
                           ),
                         ),
                       if (!_engine.isFileBased) ...[
                       Row(
                         children: [
-                          Expanded(flex: 3, child: _field('主机', _host)),
+                          Expanded(flex: 3, child: _field(tr('主机'), _host)),
                           const SizedBox(width: 10),
-                          Expanded(child: _field('端口', _port)),
+                          Expanded(child: _field(tr('端口'), _port)),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      _field('数据库', _database),
+                      _field(tr('数据库'), _database),
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          Expanded(child: _field('用户名', _username)),
+                          Expanded(child: _field(tr('用户名'), _username)),
                           const SizedBox(width: 10),
                           Expanded(
                             child: _field(
-                              '密码',
+                              tr('密码'),
                               _password,
                               obscure: _obscurePassword,
                               suffix: IconButton(
@@ -345,7 +346,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                             ),
                           ),
                           subtitle: Text(
-                            '走 https 端口(默认 8443)',
+                            tr('走 https 端口(默认 8443)'),
                             style: TextStyle(
                               fontSize: 11,
                               color: AppTheme.subtleTextColor,
@@ -359,14 +360,14 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                           dense: true,
                           contentPadding: EdgeInsets.zero,
                           title: Text(
-                            '使用 SSL / TLS',
+                            tr('使用 SSL / TLS'),
                             style: TextStyle(
                               fontSize: 13,
                               color: AppTheme.bodyColor,
                             ),
                           ),
                           subtitle: Text(
-                            '开启加密传输',
+                            tr('开启加密传输'),
                             style: TextStyle(
                               fontSize: 11,
                               color: AppTheme.subtleTextColor,
@@ -377,7 +378,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                         if (_useSsl) ...[
                           const SizedBox(height: 6),
                           Text(
-                            '验证方式',
+                            tr('验证方式'),
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
@@ -417,11 +418,11 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                           if (_sslAuthMode == 1 || _sslAuthMode == 2) ...[
                             const SizedBox(height: 10),
                             _field(
-                              '根证书 (CA Root Cert)',
+                              tr('根证书 (CA Root Cert)'),
                               _sslRootCertPath,
-                              hint: '选填，验证自签或私有 CA 证书',
+                              hint: tr('选填，验证自签或私有 CA 证书'),
                               suffix: IconButton(
-                                tooltip: '选择根证书文件',
+                                tooltip: tr('选择根证书文件'),
                                 icon: Icon(
                                   LucideIcons.folderOpen300,
                                   size: 15,
@@ -431,7 +432,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                                 onPressed:
                                     () => _pickFile(
                                       _sslRootCertPath,
-                                      '选择 CA 根证书',
+                                      tr('选择 CA 根证书'),
                                     ),
                               ),
                             ),
@@ -439,11 +440,11 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                           if (_sslAuthMode == 2) ...[
                             const SizedBox(height: 10),
                             _field(
-                              '客户端证书 (Client Cert)',
+                              tr('客户端证书 (Client Cert)'),
                               _sslClientCertPath,
-                              hint: '必填，用于客户端双向认证',
+                              hint: tr('必填，用于客户端双向认证'),
                               suffix: IconButton(
-                                tooltip: '选择客户端证书文件',
+                                tooltip: tr('选择客户端证书文件'),
                                 icon: Icon(
                                   LucideIcons.folderOpen300,
                                   size: 15,
@@ -453,17 +454,17 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                                 onPressed:
                                     () => _pickFile(
                                       _sslClientCertPath,
-                                      '选择客户端证书',
+                                      tr('选择客户端证书'),
                                     ),
                               ),
                             ),
                             const SizedBox(height: 10),
                             _field(
-                              '客户端私钥 (Client Key)',
+                              tr('客户端私钥 (Client Key)'),
                               _sslClientKeyPath,
-                              hint: '必填，与客户端证书配套的私钥',
+                              hint: tr('必填，与客户端证书配套的私钥'),
                               suffix: IconButton(
-                                tooltip: '选择客户端私钥文件',
+                                tooltip: tr('选择客户端私钥文件'),
                                 icon: Icon(
                                   LucideIcons.folderOpen300,
                                   size: 15,
@@ -473,7 +474,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                                 onPressed:
                                     () => _pickFile(
                                       _sslClientKeyPath,
-                                      '选择客户端私钥',
+                                      tr('选择客户端私钥'),
                                     ),
                               ),
                             ),
@@ -509,18 +510,18 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(LucideIcons.plugZap, size: 14),
-                    label: const Text('测试连接'),
+                    label: Text(tr('测试连接')),
                   ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
+                    child: Text(tr('取消')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed: () =>
                         Navigator.of(context).pop(_buildConfig()),
-                    child: const Text('保存'),
+                    child: Text(tr('保存')),
                   ),
                 ],
               ),

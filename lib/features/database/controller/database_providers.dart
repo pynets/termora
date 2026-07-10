@@ -8,6 +8,7 @@ import 'package:termora/core/services/workspace_store.dart';
 import 'package:termora/features/database/data/connection_store.dart';
 import 'package:termora/features/database/data/db_service.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 // ----------------------------------------------------------------------
 // 已保存的连接列表
@@ -399,7 +400,7 @@ class DbSessionController extends Notifier<DbSessionsState> {
         version = await DbService.serverVersion(conn);
         schemas = await DbService.listSchemas(conn);
       } catch (e) {
-        debugPrint('[DB] 加载元数据失败($id): $e');
+        debugPrint(tr2('[DB] 加载元数据失败({0}): {1}', [id, e]));
       }
       if (generation != _generations[id]) return;
 
@@ -503,7 +504,7 @@ class DbSessionController extends Notifier<DbSessionsState> {
           loadingSchemas: {...s.loadingSchemas}..remove(schema),
         ),
       );
-      debugPrint('[DB] 加载表列表失败($schema): $e');
+      debugPrint(tr2('[DB] 加载表列表失败({0}): {1}', [schema, e]));
     }
   }
 
@@ -982,14 +983,14 @@ class DbSessionController extends Notifier<DbSessionsState> {
 
   Future<String?> saveTab(int tabIndex) async {
     final id = state.activeId;
-    if (id == null) return '未连接数据库';
+    if (id == null) return tr('未连接数据库');
     final conn = _connFor(id);
     final tab = _tabAt(id, tabIndex);
-    if (conn == null || tab == null) return '连接不可用';
+    if (conn == null || tab == null) return tr('连接不可用');
     final output = tab.output;
     final context = tab.editContext;
     if (output == null || context == null || !context.editable) {
-      return '该结果集没有完整主键,无法保存';
+      return tr('该结果集没有完整主键,无法保存');
     }
     if (!tab.edits.isDirty) return null;
 
@@ -1017,14 +1018,14 @@ class DbSessionController extends Notifier<DbSessionsState> {
 
   Future<String?> saveSql() async {
     final id = state.activeId;
-    if (id == null) return '未连接数据库';
+    if (id == null) return tr('未连接数据库');
     final conn = _connFor(id);
     final session = state.activeSession;
     final output = session.sql.output;
     final context = session.sql.editContext;
-    if (conn == null) return '连接不可用';
+    if (conn == null) return tr('连接不可用');
     if (output == null || context == null || !context.editable) {
-      return '该查询结果没有完整主键,无法保存';
+      return tr('该查询结果没有完整主键,无法保存');
     }
     if (!session.sql.edits.isDirty) return null;
 
@@ -1099,7 +1100,7 @@ class DbSessionController extends Notifier<DbSessionsState> {
 
   static String _friendlyError(Object e) {
     if (e is ServerException) {
-      final position = e.position != null ? ' (位置 ${e.position})' : '';
+      final position = e.position != null ? tr2(' (位置 {0})', [e.position]) : '';
       return '${e.severity.name}: ${e.message}$position';
     }
     return e.toString();

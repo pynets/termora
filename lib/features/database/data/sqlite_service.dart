@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:sqlite3/sqlite3.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// SQLite 访问封装(package:sqlite3,macOS 直接绑系统 libsqlite3)。
 /// config.database 存数据库文件路径;schema 对应 ATTACH 的库名(通常只有 main)。
@@ -14,11 +15,11 @@ class SqliteService {
   static Future<Database> open(DbConnectionConfig config) async {
     final path = config.database.trim();
     if (path.isEmpty) {
-      throw StateError('未指定数据库文件路径');
+      throw StateError(tr('未指定数据库文件路径'));
     }
     // 不隐式建库:路径打错时静默创建空文件很难排查
     if (!File(path).existsSync()) {
-      throw StateError('数据库文件不存在: $path');
+      throw StateError(tr2('数据库文件不存在: {0}', [path]));
     }
     return sqlite3.open(path);
   }
@@ -323,7 +324,7 @@ class SqliteService {
           DbIndexInfo(
             name: row[0] as String,
             // 自动索引(unique 约束等)没有 DDL 文本
-            definition: row[1] as String? ?? '(自动索引)',
+            definition: row[1] as String? ?? tr('(自动索引)'),
           ),
       ],
       approxRows: approxRows,
@@ -544,7 +545,7 @@ class SqliteService {
     required DbEditSession session,
   }) async {
     if (!context.editable) {
-      throw StateError('该结果集没有完整主键,无法保存改动');
+      throw StateError(tr('该结果集没有完整主键,无法保存改动'));
     }
     final target = _qualified(context.schema, context.table);
 
@@ -557,7 +558,7 @@ class SqliteService {
         final (where, params) = _pkWhere(context, output.rows[rowIndex]);
         db.execute('DELETE FROM $target WHERE $where', params);
         if (db.updatedRows != 1) {
-          throw StateError('删除行影响了 ${db.updatedRows} 行(预期 1)');
+          throw StateError(tr2('删除行影响了 {0} 行(预期 1)', [db.updatedRows]));
         }
         applied++;
       }
@@ -589,7 +590,7 @@ class SqliteService {
           [...params, ...whereParams],
         );
         if (db.updatedRows != 1) {
-          throw StateError('更新行影响了 ${db.updatedRows} 行(预期 1)');
+          throw StateError(tr2('更新行影响了 {0} 行(预期 1)', [db.updatedRows]));
         }
         applied++;
       }

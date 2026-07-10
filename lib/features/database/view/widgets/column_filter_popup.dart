@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/widgets/glass_menu.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 在 [position] 下方弹出列过滤面板。返回:
 /// - 新的 DbColumnFilter(应用)
@@ -174,8 +175,8 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                       ),
                       decoration: InputDecoration(
                         hintText: _op == DbFilterOp.inList
-                            ? '逗号分隔多个值'
-                            : '值',
+                            ? tr('逗号分隔多个值')
+                            : tr('值'),
                         hintStyle: TextStyle(
                           fontSize: 12,
                           color: AppTheme.subtleTextColor.withValues(alpha: 0.7),
@@ -203,7 +204,7 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                             visualDensity: VisualDensity.compact,
                           ),
                           child: Text(
-                            '清除',
+                            tr('清除'),
                             style: TextStyle(
                               fontSize: 12,
                               color: AppTheme.errorColor,
@@ -216,7 +217,7 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                         style: TextButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                         ),
-                        child: const Text('取消', style: TextStyle(fontSize: 12)),
+                        child: Text(tr('取消'), style: TextStyle(fontSize: 12)),
                       ),
                       const SizedBox(width: 4),
                       FilledButton(
@@ -224,7 +225,7 @@ class _ColumnFilterPopupState extends State<_ColumnFilterPopup> {
                         style: FilledButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                         ),
-                        child: const Text('应用', style: TextStyle(fontSize: 12)),
+                        child: Text(tr('应用'), style: TextStyle(fontSize: 12)),
                       ),
                     ],
                   ),

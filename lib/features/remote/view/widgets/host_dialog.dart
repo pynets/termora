@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/utils/file_picker_helper.dart';
 import 'package:termora/features/remote/domain/ssh_host.dart';
+import 'package:termora/core/l10n/app_l10n.dart';
 
 /// 打开主机配置弹窗。返回保存后的配置(取消返回 null)。
 /// [groups] 为已有分组名,供分组输入框自动补全。
@@ -84,7 +85,7 @@ class _SshHostDialogState extends State<_SshHostDialog> {
   Future<void> _pickKeyFile() async {
     final initialDirectory = await FilePickerHelper.getInitialDirectory();
     final result = await FilePicker.pickFiles(
-      dialogTitle: '选择 SSH 私钥',
+      dialogTitle: tr('选择 SSH 私钥'),
       initialDirectory: initialDirectory,
     );
     final path = result?.files.firstOrNull?.path;
@@ -118,7 +119,7 @@ class _SshHostDialogState extends State<_SshHostDialog> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    widget.existing == null ? '新建主机' : '编辑主机',
+                    widget.existing == null ? tr('新建主机') : tr('编辑主机'),
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -128,24 +129,24 @@ class _SshHostDialogState extends State<_SshHostDialog> {
                 ],
               ),
               const SizedBox(height: 16),
-              _field('名称', _name, hint: '默认 user@host'),
+              _field(tr('名称'), _name, hint: tr('默认 user@host')),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(flex: 3, child: _field('主机', _host, hint: '必填')),
+                  Expanded(flex: 3, child: _field(tr('主机'), _host, hint: tr('必填'))),
                   const SizedBox(width: 10),
-                  Expanded(child: _field('端口', _port)),
+                  Expanded(child: _field(tr('端口'), _port)),
                 ],
               ),
               const SizedBox(height: 10),
-              _field('用户', _user, hint: '留空用本机用户名'),
+              _field(tr('用户'), _user, hint: tr('留空用本机用户名')),
               const SizedBox(height: 10),
               _field(
-                '私钥',
+                tr('私钥'),
                 _keyPath,
-                hint: '留空走 ~/.ssh 默认或密码登录',
+                hint: tr('留空走 ~/.ssh 默认或密码登录'),
                 suffix: IconButton(
-                  tooltip: '选择私钥文件',
+                  tooltip: tr('选择私钥文件'),
                   icon: Icon(
                     LucideIcons.folderOpen300,
                     size: 15,
@@ -159,7 +160,7 @@ class _SshHostDialogState extends State<_SshHostDialog> {
                 ),
               ),
               const SizedBox(height: 10),
-              _field('附加参数', _extraArgs, hint: '如 -J jump@bastion'),
+              _field(tr('附加参数'), _extraArgs, hint: tr('如 -J jump@bastion')),
               const SizedBox(height: 10),
               _groupField(),
               const SizedBox(height: 12),
@@ -170,7 +171,7 @@ class _SshHostDialogState extends State<_SshHostDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
+                    child: Text(tr('取消')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
@@ -178,7 +179,7 @@ class _SshHostDialogState extends State<_SshHostDialog> {
                       backgroundColor: AppTheme.brandColor,
                     ),
                     onPressed: _save,
-                    child: const Text('保存'),
+                    child: Text(tr('保存')),
                   ),
                 ],
               ),
@@ -205,8 +206,10 @@ class _SshHostDialogState extends State<_SshHostDialog> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '密码登录:私钥留空,点「连接」后在终端里输入密码即可。'
-              '首次连上后 SFTP / 文件面板会自动复用该连接(免再输密码)。',
+              tr(
+                '密码登录:私钥留空,点「连接」后在终端里输入密码即可。'
+                '首次连上后 SFTP / 文件面板会自动复用该连接(免再输密码)。',
+              ),
               style: TextStyle(
                 fontSize: 11.5,
                 height: 1.5,
@@ -222,13 +225,13 @@ class _SshHostDialogState extends State<_SshHostDialog> {
   /// 分组输入:自由填写 + 从已有分组里快速选。
   Widget _groupField() {
     return _field(
-      '分组',
+      tr('分组'),
       _group,
-      hint: '留空=未分组,如 生产 / 测试',
+      hint: tr('留空=未分组,如 生产 / 测试'),
       suffix: widget.groups.isEmpty
           ? null
           : PopupMenuButton<String>(
-              tooltip: '选择已有分组',
+              tooltip: tr('选择已有分组'),
               icon: Icon(
                 LucideIcons.chevronDown300,
                 size: 15,
