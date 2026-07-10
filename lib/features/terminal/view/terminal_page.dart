@@ -2491,7 +2491,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   }
 
   String? get _currentAppBundlePath {
-    final executable = Platform.resolvedExecutable;
+    final executable = Platform.executable;
     final match = RegExp(r'^(.+?\.app)(?:/.*)?$').firstMatch(executable);
     return match?.group(1);
   }

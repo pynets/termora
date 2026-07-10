@@ -176,7 +176,7 @@ class UpdateService {
       final newApp = apps.first.path;
 
       // 3. 定位当前 .app 包路径(…/Termora.app/Contents/MacOS/termora)
-      final exe = Platform.resolvedExecutable;
+      final exe = Platform.executable;
       final marker = exe.indexOf('.app/Contents/MacOS/');
       if (marker < 0) return false; // 非打包运行(flutter run),不自动替换
       final targetApp = exe.substring(0, marker + 4);

@@ -155,7 +155,7 @@ class TrayService with TrayListener, WindowListener {
 
     launchAtStartup.setup(
       appName: 'Termora',
-      appPath: Platform.resolvedExecutable,
+      appPath: Platform.executable,
     );
     try {
       _launchAtStartup = await launchAtStartup.isEnabled();
