@@ -30,6 +30,19 @@ mixin _TerminalEmulator on State<_TerminalSessionView> {
   bool _savedAutoWrapMode = true;
   String? _activeOsc8Url;
 
+  // ── 格子级文本选择(替代 SelectionArea:光标制取整会把按在字形
+  // 中后段的首字取整掉;终端语义是按到哪个格子就从哪个格子选起)──
+  // anchor = 按下格,focus = 拖到的格;两者都含入选择。
+  ({int row, int col})? _gridSelAnchor;
+  ({int row, int col})? _gridSelFocus;
+
+  bool get _hasGridSelection => _gridSelAnchor != null && _gridSelFocus != null;
+
+  void _clearGridSelection() {
+    _gridSelAnchor = null;
+    _gridSelFocus = null;
+  }
+
   bool _isAltBufferActive = false;
   final List<TerminalLine> _normalLines = [];
   int _normalCursorX = 0;
@@ -2193,6 +2206,17 @@ mixin _TerminalEmulator on State<_TerminalSessionView> {
       _lines.removeRange(0, removed);
       _cursorY = math.max(0, _cursorY - removed);
       _savedCursorY = math.max(0, _savedCursorY - removed);
+      // 选区行号随裁剪平移;被裁掉的选区直接失效
+      final anchor = _gridSelAnchor;
+      final focus = _gridSelFocus;
+      if (anchor != null && focus != null) {
+        if (anchor.row < removed || focus.row < removed) {
+          _clearGridSelection();
+        } else {
+          _gridSelAnchor = (row: anchor.row - removed, col: anchor.col);
+          _gridSelFocus = (row: focus.row - removed, col: focus.col);
+        }
+      }
     }
   }
 }

@@ -7,6 +7,8 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart'
+    show RenderMetaData, RendererBinding;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -1111,6 +1113,13 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
 /// 命令历史存储 key 前缀;会话级 key = `$_legacyHistoryPreferenceKey.<providerKey>`,
 /// 无后缀的旧全局 key 只作首次迁移种子
 const _legacyHistoryPreferenceKey = 'workbench_terminal_history_v1';
+
+/// 输出区一行的命中标记(格子选择:hitTest 精确定位行,行高可变也不怕)
+class _TerminalRowTag {
+  const _TerminalRowTag(this.index);
+
+  final int index;
+}
 
 /// A node in the terminal split-pane layout tree.
 sealed class _PaneNode {}
@@ -2615,6 +2624,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   void _clearLines() {
     setState(() {
       _lines.clear();
+      _clearGridSelection();
       _ansiStyle = const AnsiStyle();
       _cursorX = 0;
       _cursorY = 0;
@@ -2681,6 +2691,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       _scrollBottomMargin = math.max(0, _ptyRows - 1);
       _resetTerminalModes();
       _pendingEscapeSequence = '';
+      _clearGridSelection();
       _titleStack.reset();
       _palette.clear();
       _dynamicForegroundColor = null;
@@ -3377,6 +3388,15 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     final isControlPressed = HardwareKeyboard.instance.isControlPressed;
     final isMetaPressed = HardwareKeyboard.instance.isMetaPressed;
     final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+
+    // 有格子选区时 ⌘C = 复制选区(优先于 pty 转发;⌃C 中断不受影响)
+    if (isMetaPressed &&
+        !isShiftPressed &&
+        key == LogicalKeyboardKey.keyC &&
+        _hasGridSelection) {
+      unawaited(_copyGridSelection());
+      return KeyEventResult.handled;
+    }
 
     if (_isNativePtyActive) {
       return _handleNativePtyKeyEvent(
@@ -5657,26 +5677,220 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     return '${trimmed.substring(0, maxLength - 1)}…';
   }
 
+  // ── 格子级文本选择:真终端语义(按到哪个格子就从哪个格子选起)。
+  // 之前用 SelectionArea,其光标制取整会把「按在字形中后段」的首字
+  // 取整掉(Menlo 下按到字形 ~70% 处即丢),粘贴总少第一个字。──
+
+  /// 输出区坐标 → (行,列)。行用 hitTest 命中行标记(行高可变也精确),
+  /// 列按该行内容与渲染模式逐字累积换算。
+  ({int row, int col})? _cellAtGlobal(
+    Offset globalPosition,
+    _TerminalCellMetrics metrics,
+  ) {
+    final result = HitTestResult();
+    RendererBinding.instance.hitTestInView(
+      result,
+      globalPosition,
+      View.of(context).viewId,
+    );
+    for (final entry in result.path) {
+      final target = entry.target;
+      if (target is RenderMetaData && target.metaData is _TerminalRowTag) {
+        final row = (target.metaData as _TerminalRowTag).index;
+        if (row < 0 || row >= _lines.length) return null;
+        final local = target.globalToLocal(globalPosition);
+        // 行 Container 有 horizontal:2 padding
+        final col = _columnAtLineX(_lines[row], local.dx - 2, metrics);
+        return (row: row, col: col);
+      }
+    }
+    return null;
+  }
+
+  /// 行内 x → 列:按渲染布局逐 rune 累积(proportional 用 wideCellWidth,
+  /// 网格模式宽字 = 2×cellWidth);字形内任意落点都归属该格(格子语义)。
+  int _columnAtLineX(
+    TerminalLine line,
+    double x,
+    _TerminalCellMetrics metrics,
+  ) {
+    if (x <= 0) return 0;
+    final proportional = !_isAltBufferActive && !_isNativePtyActive;
+    final wide = proportional
+        ? metrics.wideCellWidth
+        : metrics.cellWidth * 2;
+    var px = 0.0;
+    var col = 0;
+    for (final rune in line.text.runes) {
+      final w = terminalRuneCellWidth(rune);
+      if (w == 0) continue;
+      final advance = w == 2 ? wide : metrics.cellWidth;
+      if (x < px + advance) return col;
+      px += advance;
+      col += w;
+    }
+    // 行尾右侧按网格延伸
+    return col + math.max(0, ((x - px) / metrics.cellWidth).floor());
+  }
+
+  /// 规范化选区:起止都含入,(row,col) 字典序
+  ({int startRow, int startCol, int endRow, int endCol})?
+  get _normalizedGridSelection {
+    final a = _gridSelAnchor;
+    final f = _gridSelFocus;
+    if (a == null || f == null) return null;
+    final aFirst = a.row < f.row || (a.row == f.row && a.col <= f.col);
+    final start = aFirst ? a : f;
+    final end = aFirst ? f : a;
+    return (
+      startRow: start.row,
+      startCol: start.col,
+      endRow: end.row,
+      endCol: end.col,
+    );
+  }
+
+  Offset? _gridSelDownPos;
+  ({int row, int col})? _gridSelPendingCell;
+  bool _gridSelDragging = false;
+
+  void _handleOutputPointerDown(
+    PointerDownEvent event,
+    _TerminalCellMetrics metrics,
+  ) {
+    if (event.kind == PointerDeviceKind.mouse &&
+        event.buttons != kPrimaryMouseButton) {
+      return;
+    }
+    // 远端程序接管鼠标(vim 等)时选择让位,与真终端一致
+    if (_isMouseReportingActive) return;
+    _gridSelDownPos = event.position;
+    _gridSelDragging = false;
+    _gridSelPendingCell = _cellAtGlobal(event.position, metrics);
+    // 按下即清掉旧选区(标准行为:新的点击/拖选替换旧选择)
+    if (_hasGridSelection) setState(_clearGridSelection);
+  }
+
+  void _handleOutputPointerMove(
+    PointerMoveEvent event,
+    _TerminalCellMetrics metrics,
+  ) {
+    final down = _gridSelDownPos;
+    if (down == null) return;
+    if (!_gridSelDragging) {
+      if ((event.position - down).distance <= 4) return;
+      _gridSelDragging = true;
+    }
+    final cell = _cellAtGlobal(event.position, metrics);
+    if (cell == null) return;
+    setState(() {
+      _gridSelAnchor ??= _gridSelPendingCell ?? cell;
+      _gridSelFocus = cell;
+    });
+  }
+
+  void _handleOutputPointerUp() {
+    _gridSelDownPos = null;
+    _gridSelPendingCell = null;
+    _gridSelDragging = false;
+  }
+
+  /// 选区文本:软折行(isWrapped)的行无缝拼回逻辑行,硬换行加 \n;
+  /// 选到行尾时去掉尾随空格(BCE 填充不进剪贴板)
+  String _gridSelectionText() {
+    final sel = _normalizedGridSelection;
+    if (sel == null) return '';
+    final buffer = StringBuffer();
+    for (var row = sel.startRow; row <= sel.endRow; row++) {
+      if (row < 0 || row >= _lines.length) continue;
+      final line = _lines[row];
+      if (line.image == null) {
+        final startCell = row == sel.startRow ? sel.startCol : 0;
+        final endCell = row == sel.endRow ? sel.endCol + 1 : line.length;
+        var text = terminalSubstringByCellRange(
+          line.text,
+          startCell,
+          math.max(startCell, math.min(endCell, line.length)),
+        );
+        if (endCell >= line.length) text = text.trimRight();
+        buffer.write(text);
+      }
+      if (row < sel.endRow) {
+        final nextWrapped =
+            row + 1 < _lines.length && _lines[row + 1].isWrapped;
+        if (!nextWrapped) buffer.write('\n');
+      }
+    }
+    return buffer.toString();
+  }
+
+  Future<void> _copyGridSelection() async {
+    final text = _gridSelectionText();
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+  }
+
+  /// 该行落在选区内的 [起始列, 结束列) 高亮区间
+  (int, int)? _gridSelectionRangeForRow(int row) {
+    final sel = _normalizedGridSelection;
+    if (sel == null || row < sel.startRow || row > sel.endRow) return null;
+    final start = row == sel.startRow ? sel.startCol : 0;
+    final end = row == sel.endRow ? sel.endCol + 1 : 1 << 20;
+    return (start, end);
+  }
+
+  Future<void> _showGridSelectionMenu(Offset position) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final action = await showMenu<String>(
+      context: context,
+      color: AppTheme.surfaceColor,
+      position: RelativeRect.fromRect(
+        position & Size.zero,
+        Offset.zero & overlay.size,
+      ),
+      items: const [
+        PopupMenuItem(value: 'copy', height: 34, child: Text('复制')),
+        PopupMenuItem(value: 'clear', height: 34, child: Text('取消选择')),
+      ],
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'copy':
+        unawaited(_copyGridSelection());
+      case 'clear':
+        setState(_clearGridSelection);
+    }
+  }
+
   Widget _buildTerminalOutput(TextStyle monoStyle) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final metrics = _TerminalCellMetrics.fromStyle(monoStyle);
         _syncPtySizeForViewport(constraints, metrics);
-        // 点击输出区任意处都把焦点还给命令输入。之前用 GestureDetector.onTap,
-        // 但 SelectionArea 在手势竞技场里赢走了 tap(选择手势),onTap 永远
-        // 不触发 —— 表现为「必须点到输入框旁边才有焦点」。Listener 不参与
-        // 竞技场,pointer-up 必达;拖拽选择结束时也会走到这里,拿焦点不清
-        // 选区,无副作用。
+        // 点击输出区任意处都把焦点还给命令输入(Listener 不进竞技场,
+        // pointer-up 必达);同一个 Listener 承载格子选择的按下/拖动。
         // 注:不加 _externalWidgetHasFocus 守卫 —— 那是防「自动回抢」用的;
         // 用户主动点输出区就是要用终端,即便地址栏/搜索框正持焦点也应转移。
         // 详情面板是 Stack 兄弟层且悬浮在上,它的点击不会冒泡到这里。
         return Listener(
           behavior: HitTestBehavior.translucent,
+          onPointerDown: (event) => _handleOutputPointerDown(event, metrics),
+          onPointerMove: (event) => _handleOutputPointerMove(event, metrics),
           onPointerUp: (_) {
             if (!mounted) return;
+            _handleOutputPointerUp();
             _activeInputNode.requestFocus();
           },
-          child: SelectionArea(
+          onPointerCancel: (_) => _handleOutputPointerUp(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            // 有选区时右键弹「复制/取消选择」;提示符行自身的命令菜单
+            // 在更内层,竞技场里优先命中,互不冲突
+            onSecondaryTapUp: _hasGridSelection
+                ? (details) =>
+                      unawaited(_showGridSelectionMenu(details.globalPosition))
+                : null,
             child: ValueListenableBuilder<int>(
               valueListenable: _terminalOutputVersion,
               builder: (context, version, child) {
@@ -5743,10 +5957,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               }
               // 内联图片行(Sixel / iTerm2):渲染图片,不走文本路径
               if (rawLine.image != null) {
-                return _wrapTerminalMouseLine(
-                  rowIndex: index,
-                  metrics: metrics,
-                  child: _buildInlineImage(rawLine.image!),
+                return MetaData(
+                  metaData: _TerminalRowTag(index),
+                  behavior: HitTestBehavior.translucent,
+                  child: _wrapTerminalMouseLine(
+                    rowIndex: index,
+                    metrics: metrics,
+                    child: _buildInlineImage(rawLine.image!),
+                  ),
                 );
               }
               // 触发器高亮:非全屏(alt buffer)时把命中规则的文本上色。
@@ -5811,6 +6029,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   // 寻址,用严格网格才能对齐、不与 shell 折行打架;
                   // 比例渲染 + 组件折行只留给退出后的静态历史输出。
                   proportional: !_isAltBufferActive && !_isNativePtyActive,
+                  selection: _gridSelectionRangeForRow(index),
+                  selectionColor: AppTheme.brandColor.withValues(alpha: 0.28),
                 ),
               );
               // 提示符行(Shell 集成):右键菜单;折叠时在其下方挂占位条
@@ -5833,10 +6053,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                       : lineWidget,
                 );
               }
-              return _wrapTerminalMouseLine(
-                rowIndex: index,
-                metrics: metrics,
-                child: wrapped,
+              return MetaData(
+                metaData: _TerminalRowTag(index),
+                behavior: HitTestBehavior.translucent,
+                child: _wrapTerminalMouseLine(
+                  rowIndex: index,
+                  metrics: metrics,
+                  child: wrapped,
+                ),
               );
             },
           ),

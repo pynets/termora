@@ -15,6 +15,8 @@ class _TerminalOutputText extends StatefulWidget {
     required this.trimLinkText,
     required this.onOpenLink,
     this.proportional = false,
+    this.selection,
+    this.selectionColor = const Color(0x4733691E),
   });
 
   final TerminalLine line;
@@ -22,6 +24,10 @@ class _TerminalOutputText extends StatefulWidget {
   final _TerminalCellMetrics metrics;
   final int columns;
   final int? cursorColumn;
+
+  /// 格子选择在本行的 [起始列, 结束列) 高亮区间(null = 本行无选区)
+  final (int, int)? selection;
+  final Color selectionColor;
 
   /// When true (the normal buffer), wide characters advance by their real
   /// glyph width instead of `2 * cellWidth`, avoiding gaps after CJK text.
@@ -50,12 +56,18 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
   @override
   Widget build(BuildContext context) {
     if (widget.line.type == TerminalLineType.prompt) {
-      return Text.rich(
+      final text = Text.rich(
         _buildPlainTextSpan(),
         softWrap: true,
         style: widget.monoStyle.copyWith(
           color: widget.colorForLine(widget.line.type),
         ),
+      );
+      // 提示符行可软折行、列几何不稳定:选中时整行淡高亮(文本提取仍精确)
+      if (widget.selection == null) return text;
+      return DecoratedBox(
+        decoration: BoxDecoration(color: widget.selectionColor),
+        child: text,
       );
     }
     final runs = _buildRuns();
@@ -78,6 +90,8 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
               cursorShape: widget.cursorShape,
               cursorColor: widget.cursorColor,
               cursorGlyphColor: widget.cursorGlyphColor,
+              selection: widget.selection,
+              selectionColor: widget.selectionColor,
             ),
           ),
         ),
@@ -122,26 +136,9 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
         );
       }
     }
-    return _selectableLine(visible);
-  }
-
-  /// 视觉层(画布/定位 Text)本身选不中或会重复选中;在其上叠一层
-  /// 透明的等宽 Text 供 SelectionArea 选择与复制,视觉层则禁用选择。
-  Widget _selectableLine(Widget visible) {
-    return Stack(
-      children: [
-        SelectionContainer.disabled(child: visible),
-        Positioned.fill(
-          child: Text(
-            widget.line.text,
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.clip,
-            style: widget.monoStyle.copyWith(color: const Color(0x00000000)),
-          ),
-        ),
-      ],
-    );
+    // 文本选择已改为格子级自绘(高亮在 painter / 可视行内绘制),
+    // 不再需要 SelectionArea 的透明覆盖文本层
+    return visible;
   }
 
   /// 渲染一个可视行:列窗口 [rowStartCol, rowStartCol+rowColumns)。
@@ -159,6 +156,28 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
     final rowStartPx = _pixelForColumn(lineOffsets, rowStartCol);
     final rowEndPx = _pixelForColumn(lineOffsets, rowStartCol + rowColumns);
     final rowWidth = math.max(1.0, rowEndPx - rowStartPx);
+    // 格子选择高亮:全局列区间与本可视行窗口求交,画半透明覆盖
+    Widget? selectionOverlay;
+    final sel = widget.selection;
+    if (sel != null) {
+      final selStart = math.max(sel.$1, rowStartCol);
+      final selEnd = math.min(sel.$2, rowStartCol + rowColumns);
+      if (selEnd > selStart) {
+        final left = _pixelForColumn(lineOffsets, selStart) - rowStartPx;
+        final right = _pixelForColumn(lineOffsets, selEnd) - rowStartPx;
+        selectionOverlay = Positioned(
+          left: left,
+          top: 0,
+          width: math.max(right - left, widget.metrics.cellWidth / 2),
+          height: widget.metrics.lineHeight,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: widget.selectionColor),
+            ),
+          ),
+        );
+      }
+    }
     return SizedBox(
       height: widget.metrics.lineHeight,
       width: double.infinity,
@@ -176,6 +195,7 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
               clipBehavior: Clip.none,
               children: [
                 for (final run in runs) _buildRun(run, lineOffsets, rowStartPx),
+                ?selectionOverlay,
                 if (cursorColumn != null)
                   _buildCursor(cursorColumn, lineOffsets, rowStartPx),
               ],
@@ -669,6 +689,8 @@ class _TerminalGridPainter extends CustomPainter {
     required this.cursorShape,
     required this.cursorColor,
     required this.cursorGlyphColor,
+    this.selection,
+    this.selectionColor = const Color(0x4733691E),
   });
 
   final List<_TerminalGridRun> runs;
@@ -679,6 +701,10 @@ class _TerminalGridPainter extends CustomPainter {
 
   /// 实心块状光标下,反显字符用的颜色(终端背景色)
   final Color cursorGlyphColor;
+
+  /// 格子选择在本行的 [起始列, 结束列) 高亮区间
+  final (int, int)? selection;
+  final Color selectionColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -696,6 +722,16 @@ class _TerminalGridPainter extends CustomPainter {
     }
     for (final run in runs) {
       _paintRunText(canvas, run);
+    }
+    // 选区高亮画在字形之上(半透明,文字仍可读),与真终端观感一致
+    final sel = selection;
+    if (sel != null && sel.$2 > sel.$1) {
+      final left = sel.$1 * cell;
+      final width = math.max((sel.$2 - sel.$1) * cell, cell / 2);
+      canvas.drawRect(
+        Rect.fromLTWH(left, 0, math.min(width, size.width - left), height),
+        Paint()..color = selectionColor,
+      );
     }
     final column = cursorColumn;
     if (column != null && column >= 0) _paintCursor(canvas, column);
