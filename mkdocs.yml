@@ -1,0 +1,81 @@
+site_name: Termora
+site_description: A modern, high-performance cross-platform desktop developer toolbox.
+site_author: cksytww
+site_url: https://pynets.github.io/termora/
+repo_url: https://github.com/pynets/termora
+repo_name: pynets/termora
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 cksytww
+
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.action.edit
+  palette:
+    scheme: default
+    primary: white
+    accent: black
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: zh
+          name: 简体中文
+          build: true
+          nav_translations:
+            Termora: 首页
+            Getting started: 快速开始
+            Features: 功能特性
+            Terminal & SSH: 终端与 SSH
+            Database explorer: 数据库客户端
+            Notes & LaTeX: 笔记与 LaTeX
+            Screenshot pinning: 截图贴图
+            Contributing: 参与贡献
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Termora: index.md
+  - Getting started: getting-started.md
+  - Features:
+      - Terminal & SSH: features/terminal.md
+      - Database explorer: features/database.md
+      - Notes & LaTeX: features/notes.md
+      - Screenshot pinning: features/screenshot.md
+  - Contributing: contributing.md
