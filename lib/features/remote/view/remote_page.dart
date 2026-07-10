@@ -147,45 +147,63 @@ class _RemotePageState extends ConsumerState<RemotePage> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
-          title: const Text('提权访问'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, label: Text('sudo')),
-                  ButtonSegment(value: true, label: Text('su(root)')),
-                ],
-                selected: {su},
-                onSelectionChanged: (s) => setLocal(() => su = s.first),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                obscureText: true,
-                style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                  hintText: su ? 'root 用户密码' : '当前用户的 sudo 密码',
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          title: Text(
+            '提权访问',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.headingColor,
+            ),
+          ),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildElevationTabs(su, (val) => setLocal(() => su = val)),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  obscureText: true,
+                  style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    hintText: su ? 'root 用户密码' : '当前用户的 sudo 密码',
+                    hintStyle: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.subtleTextColor.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  onSubmitted: (v) =>
+                      Navigator.of(context).pop((su: su, password: v)),
                 ),
-                onSubmitted: (v) =>
-                    Navigator.of(context).pop((su: su, password: v)),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                su
-                    ? 'su:登录用户不是 sudoer 时用 root 密码切 root(浏览/下载,暂不支持上传)'
-                    : 'sudo:用当前用户的密码提权',
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1.4,
-                  color: AppTheme.subtleTextColor,
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 36,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      su
+                          ? 'su : 登录用户不是 sudoer 时使用 root 密码切换(当前支持浏览与下载)'
+                          : 'sudo : 使用当前登录用户密码提权',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.4,
+                        color: AppTheme.subtleTextColor,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -199,6 +217,94 @@ class _RemotePageState extends ConsumerState<RemotePage> {
               onPressed: () => Navigator.of(context)
                   .pop((su: su, password: controller.text)),
               child: const Text('提权'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildElevationTabs(bool currentSu, ValueChanged<bool> onChanged) {
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppTheme.mutedSurfaceColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildElevationTabItem(
+              title: 'sudo (推荐)',
+              selected: !currentSu,
+              icon: LucideIcons.shieldCheck300,
+              onTap: () => onChanged(false),
+            ),
+          ),
+          Expanded(
+            child: _buildElevationTabItem(
+              title: 'su (root)',
+              selected: currentSu,
+              icon: LucideIcons.shieldAlert300,
+              onTap: () => onChanged(true),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildElevationTabItem({
+    required String title,
+    required bool selected,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.surfaceColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+          border: selected
+              ? Border.all(
+                  color: AppTheme.brandColor.withValues(alpha: 0.35),
+                  width: 1,
+                )
+              : Border.all(color: Colors.transparent),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: selected ? AppTheme.brandColor : AppTheme.subtleTextColor,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                color:
+                    selected ? AppTheme.headingColor : AppTheme.subtleTextColor,
+              ),
             ),
           ],
         ),
