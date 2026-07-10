@@ -32,9 +32,9 @@
 
 ---
 
-## 📥 下载安装包 (Release v0.0.2)
+## 📥 下载安装包 (Release v0.0.15)
 
-- **macOS 安装包 (.dmg)**: [下载 Termora-v0.0.10-macOS.dmg](https://github.com/pynets/termora/releases/download/v0.0.10/Termora-v0.0.10-macOS.dmg)
+- **macOS 安装包 (.dmg)**: [下载 Termora-v0.0.15-macOS.dmg](https://github.com/pynets/termora/releases/download/v0.0.15/Termora-v0.0.15-macOS.dmg)
 - **全部发布版本**: [访问 GitHub Releases 页面](https://github.com/pynets/termora/releases)
 
 ---

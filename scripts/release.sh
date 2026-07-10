@@ -121,13 +121,13 @@ fi
 for README_FILE in README.md README_ZH.md; do
   if [ -f "$README_FILE" ]; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' "s/Release (v[0-9]\.[0-9]\.[0-9])/Release (${TAG_NAME})/g" "$README_FILE"
-      sed -i '' "s/Termora-v[0-9]\.[0-9]\.[0-9]-macOS\.dmg/${DMG_NAME}/g" "$README_FILE"
-      sed -i '' "s|releases/download/v[0-9]\.[0-9]\.[0-9]/|releases/download/${TAG_NAME}/|g" "$README_FILE"
+      sed -E -i '' "s/Release \(?v[0-9]+\.[0-9]+\.[0-9]+\)?/Release (${TAG_NAME})/g" "$README_FILE"
+      sed -E -i '' "s/Termora-v[0-9]+\.[0-9]+\.[0-9]+-macOS\.dmg/${DMG_NAME}/g" "$README_FILE"
+      sed -E -i '' "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/|releases/download/${TAG_NAME}/|g" "$README_FILE"
     else
-      sed -i "s/Release (v[0-9]\.[0-9]\.[0-9])/Release (${TAG_NAME})/g" "$README_FILE"
-      sed -i "s/Termora-v[0-9]\.[0-9]\.[0-9]-macOS\.dmg/${DMG_NAME}/g" "$README_FILE"
-      sed -i "s|releases/download/v[0-9]\.[0-9]\.[0-9]/|releases/download/${TAG_NAME}/|g" "$README_FILE"
+      sed -E -i "s/Release \(?v[0-9]+\.[0-9]+\.[0-9]+\)?/Release (${TAG_NAME})/g" "$README_FILE"
+      sed -E -i "s/Termora-v[0-9]+\.[0-9]+\.[0-9]+-macOS\.dmg/${DMG_NAME}/g" "$README_FILE"
+      sed -E -i "s|releases/download/v[0-9]+\.[0-9]+\.[0-9]+/|releases/download/${TAG_NAME}/|g" "$README_FILE"
     fi
     echo -e "  ✔ 已同步更新 ${README_FILE} 中的下载链接至 ${TAG_NAME}"
   fi
