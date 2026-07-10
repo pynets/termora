@@ -15,6 +15,7 @@ import 'package:termora/features/remote/data/sftp_service.dart';
 import 'package:termora/features/remote/domain/ssh_host.dart';
 import 'package:termora/features/remote/view/widgets/host_dialog.dart';
 import 'package:termora/features/remote/view/widgets/sftp_browser.dart';
+import 'package:termora/features/remote/view/widgets/transfer_log_dialog.dart';
 import 'package:termora/features/remote/view/widgets/tunnel_manager.dart';
 import 'package:termora/features/terminal/view/terminal_page.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
@@ -654,6 +655,19 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     await ref.read(sshHostsProvider.notifier).upsert(host);
   }
 
+  /// 传输记录查看页(跨全部主机的 SFTP 历史)
+  void _showTransferLog() {
+    final names = {
+      for (final h in ref.read(sshHostsProvider)) h.id: h.name,
+    };
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) => TransferLogDialog(hostNames: names),
+      ),
+    );
+  }
+
   Future<void> _editHost(SshHost host) async {
     final updated = await showSshHostDialog(
       context,
@@ -1215,6 +1229,17 @@ class _RemotePageState extends ConsumerState<RemotePage> {
                   ),
                 ],
                 const Spacer(),
+                IconButton(
+                  tooltip: tr('传输记录'),
+                  icon: Icon(
+                    LucideIcons.arrowRightLeft300,
+                    size: 15,
+                    color: AppTheme.subtleTextColor,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  splashRadius: 14,
+                  onPressed: _showTransferLog,
+                ),
                 IconButton(
                   tooltip: tr('新建主机'),
                   icon: Icon(

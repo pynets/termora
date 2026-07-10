@@ -1,3 +1,4 @@
+import 'package:sqlite3/sqlite3.dart' show ResultSet;
 import 'package:termora/core/data/app_database.dart';
 
 /// 一条已结束的传输记录(SFTP 上传/下载)
@@ -66,6 +67,31 @@ class TransferLogStore {
       'ORDER BY finished_at DESC, id DESC LIMIT ?',
       [host, limit],
     );
+    return _mapRows(rows);
+  }
+
+  /// 全部主机的传输记录(新→旧),供独立查看页;可按主机名单过滤展示
+  static Future<List<TransferRecord>> all({int limit = 500}) async {
+    final app = await AppDatabase.instance();
+    final rows = app.db.select(
+      'SELECT host, label, is_upload, state, error, total, finished_at '
+      'FROM transfer_log ORDER BY finished_at DESC, id DESC LIMIT ?',
+      [limit],
+    );
+    return _mapRows(rows);
+  }
+
+  /// 清空传输记录:[host] 为 null 清全部,否则只清该主机
+  static Future<void> clear({String? host}) async {
+    final app = await AppDatabase.instance();
+    if (host == null) {
+      app.db.execute('DELETE FROM transfer_log');
+    } else {
+      app.db.execute('DELETE FROM transfer_log WHERE host = ?', [host]);
+    }
+  }
+
+  static List<TransferRecord> _mapRows(ResultSet rows) {
     return [
       for (final r in rows)
         TransferRecord(

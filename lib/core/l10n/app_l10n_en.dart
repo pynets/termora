@@ -712,4 +712,13 @@ const Map<String, String> kAppL10nEn = {
   '默认: 数据库@主机': 'Default: database@host',
   '默认: 文件名': 'Default: file name',
   '默认值': 'Default value',
+  '清空全部': 'Clear all',
+  '清空该主机': 'Clear this host',
+  '清空传输记录': 'Clear transfer log',
+  '确定清空全部主机的传输记录吗?': 'Clear transfer records for all hosts?',
+  '确定清空「{0}」的传输记录吗?': 'Clear transfer records for “{0}”?',
+  '全部主机': 'All hosts',
+  '还没有传输记录': 'No transfers yet',
+  '没有匹配的记录': 'No matching records',
+  '上传': 'Upload',
 };

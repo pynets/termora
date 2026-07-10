@@ -119,6 +119,19 @@ void main() {
       expect(h1.first.state, 'failed');
       expect(h1.first.error, 'boom');
       expect((await TransferLogStore.recent('h2')).single.label, 'c.txt');
+
+      // all():跨主机汇总,新→旧
+      final all = await TransferLogStore.all();
+      expect([for (final r in all) r.label], ['c.txt', 'b.txt', 'a.txt']);
+
+      // clear(host):只清该主机
+      await TransferLogStore.clear(host: 'h1');
+      expect(await TransferLogStore.recent('h1'), isEmpty);
+      expect((await TransferLogStore.all()).single.label, 'c.txt');
+
+      // clear():清全部
+      await TransferLogStore.clear();
+      expect(await TransferLogStore.all(), isEmpty);
     });
   });
 
