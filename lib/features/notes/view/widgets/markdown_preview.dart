@@ -379,8 +379,15 @@ class MarkdownBlockView extends StatelessWidget {
     return style;
   }
 
+  /// 本地附件链接(插入的视频/文件落在 assets 的绝对路径)
+  static bool _isLocalAttachment(String url) =>
+      !url.contains('://') && url.startsWith('/');
+
   InlineSpan _inlineSpan(BuildContext context, MdInline s, TextStyle base) {
     if (s.imageUrl != null) return _imageSpan(s);
+    if (s.url != null && _isLocalAttachment(s.url!)) {
+      return _attachmentChip(context, s);
+    }
 
     final style = _composeStyle(s, base);
     if (s.url != null) {
@@ -407,6 +414,67 @@ class MarkdownBlockView extends StatelessWidget {
     if (s.code) return _codeChip(s, base);
     if (s.isPlain) return TextSpan(text: s.text);
     return TextSpan(text: s.text, style: style);
+  }
+
+  static const _videoExtensions = {
+    'mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'flv',
+  };
+  static const _audioExtensions = {'mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg'};
+  static const _archiveExtensions = {'zip', 'rar', '7z', 'tar', 'gz', 'bz2'};
+
+  static IconData _attachmentIcon(String url) {
+    final name = url.split('/').last;
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    if (_videoExtensions.contains(ext)) return LucideIcons.clapperboard;
+    if (_audioExtensions.contains(ext)) return LucideIcons.music;
+    if (_archiveExtensions.contains(ext)) return LucideIcons.fileArchive;
+    return LucideIcons.paperclip;
+  }
+
+  /// 附件卡片:类型图标 + 文件名,点击用系统默认应用打开(视频即播放)
+  InlineSpan _attachmentChip(BuildContext context, MdInline s) {
+    final url = s.url!;
+    final missing = !File(url).existsSync();
+    final color = missing ? AppTheme.subtleTextColor : AppTheme.headingColor;
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => _openLink(context, url),
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppTheme.mutedSurfaceColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.borderColor, width: 0.6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_attachmentIcon(url), size: 14, color: AppTheme.brandColor),
+                const SizedBox(width: 6),
+                Text(
+                  s.text.isEmpty ? url.split('/').last : s.text,
+                  style: TextStyle(fontSize: 12.5, color: color),
+                ),
+                if (missing) ...[
+                  const SizedBox(width: 5),
+                  Text(
+                    '(文件缺失)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.subtleTextColor,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// 行内代码:短的用圆角 chip(marktext 风格),

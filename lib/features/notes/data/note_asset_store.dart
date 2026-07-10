@@ -5,8 +5,8 @@ import 'package:path_provider/path_provider.dart';
 
 /// 笔记图片资源 — 插入的图片统一复制到 notes/assets/ 下,
 /// 笔记里引用落地后的绝对路径,原图挪走/删除也不影响笔记显示。
-class NoteImageStore {
-  NoteImageStore._();
+class NoteAssetStore {
+  NoteAssetStore._();
 
   static Directory? _directoryOverride;
 
@@ -27,10 +27,22 @@ class NoteImageStore {
       'img_${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}$extension';
 
   /// 把外部图片复制进资源目录,返回落地后的绝对路径
-  static Future<String> importImage(String sourcePath) async {
+  static Future<String> importImage(String sourcePath) =>
+      _import(sourcePath, fallbackExtension: '.png');
+
+  /// 把任意文件(视频/压缩包/文档…)复制进资源目录,返回落地绝对路径
+  static Future<String> importFile(String sourcePath) => _import(sourcePath);
+
+  static Future<String> _import(
+    String sourcePath, {
+    String fallbackExtension = '',
+  }) async {
     final dir = await _assetsDir();
     final ext = p.extension(sourcePath).toLowerCase();
-    final dest = p.join(dir.path, _uniqueName(ext.isEmpty ? '.png' : ext));
+    final dest = p.join(
+      dir.path,
+      _uniqueName(ext.isEmpty ? fallbackExtension : ext),
+    );
     File(sourcePath).copySync(dest);
     return dest;
   }

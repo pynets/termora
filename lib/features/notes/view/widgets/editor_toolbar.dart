@@ -119,6 +119,7 @@ class NoteInsertMenu extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     this.onPickImage,
+    this.onPickFile,
   });
 
   final TextEditingController controller;
@@ -126,6 +127,9 @@ class NoteInsertMenu extends StatelessWidget {
 
   /// 选择图片文件插入(null 时退回插入占位语法)
   final VoidCallback? onPickImage;
+
+  /// 选择视频/任意文件作为附件插入
+  final VoidCallback? onPickFile;
 
   void _apply(TextEditingValue Function(TextEditingValue) transform) {
     controller.value = transform(controller.value);
@@ -163,7 +167,26 @@ class NoteInsertMenu extends StatelessWidget {
       ),
       (LucideIcons.minus, '分隔线', (v) => MarkdownEditing.insertBlock(v, '---')),
       (LucideIcons.link, '链接', MarkdownEditing.insertLink),
-      (LucideIcons.image, '图片', MarkdownEditing.insertImage),
+      (
+        LucideIcons.image,
+        '图片…',
+        (v) {
+          // 有选图回调走文件选择器(异步流程自行插入),此处不动文本
+          final pick = onPickImage;
+          if (pick == null) return MarkdownEditing.insertImage(v);
+          pick();
+          return v;
+        },
+      ),
+      if (onPickFile != null)
+        (
+          LucideIcons.paperclip,
+          '文件 / 视频…',
+          (v) {
+            onPickFile!();
+            return v;
+          },
+        ),
     ];
 
     return PopupMenuButton<int>(

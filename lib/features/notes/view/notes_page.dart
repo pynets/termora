@@ -14,6 +14,7 @@ import 'package:termora/core/widgets/app_toast.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/features/notes/controller/notes_providers.dart';
+import 'package:termora/features/notes/data/note_asset_store.dart';
 import 'package:termora/features/notes/data/note_pdf_exporter.dart';
 import 'package:termora/features/notes/data/note_store.dart';
 import 'package:termora/features/notes/domain/markdown_editing.dart';
@@ -386,6 +387,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           child: FloatingFormatToolbar(
             controller: _editorController,
             focusNode: _editorFocus,
+            onPickImage: _pickAndInsertImage,
           ),
         ),
       );
@@ -479,6 +481,62 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         ],
       ),
     );
+  }
+
+  // ══════════════ 插入图片 / 文件 ══════════════
+
+  /// 选择图片文件 → 复制到笔记资源目录 → 光标处插入图片语法
+  Future<void> _pickAndInsertImage() => _pickAndImport(
+    dialogTitle: '插入图片',
+    allowedExtensions: const ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'],
+  );
+
+  /// 选择视频/任意文件 → 复制进资源目录 → 插入附件链接(预览成卡片)
+  Future<void> _pickAndInsertFile() => _pickAndImport(dialogTitle: '插入文件');
+
+  Future<void> _pickAndImport({
+    required String dialogTitle,
+    List<String>? allowedExtensions,
+  }) async {
+    final initialDirectory = await FilePickerHelper.getInitialDirectory();
+    final result = await FilePicker.pickFiles(
+      dialogTitle: dialogTitle,
+      initialDirectory: initialDirectory,
+      allowMultiple: true,
+      type: allowedExtensions == null ? FileType.any : FileType.custom,
+      allowedExtensions: allowedExtensions,
+    );
+    final paths = [
+      for (final f in result?.files ?? <PlatformFile>[])
+        if (f.path != null && f.path!.isNotEmpty) f.path!,
+    ];
+    if (paths.isEmpty) return;
+    try {
+      final assets = <(String, String)>[];
+      for (final source in paths) {
+        FilePickerHelper.updateLastDirectory(source);
+        assets.add((source, await NoteAssetStore.importFile(source)));
+      }
+      _applyShortcut((v) => MarkdownEditing.insertStoredAssets(v, assets));
+      _editorFocus.requestFocus();
+    } catch (e) {
+      _toast('插入失败: $e');
+    }
+  }
+
+  /// ⌘V:剪贴板里是图片(截屏/复制的图)就落盘插图,否则按普通文本粘贴
+  Future<void> _pasteSmart() async {
+    final imagePath = await NoteAssetStore.saveClipboardImage();
+    if (imagePath != null) {
+      _applyShortcut(
+        (v) => MarkdownEditing.insertDroppedPaths(v, [imagePath]),
+      );
+      return;
+    }
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text == null || text.isEmpty) return;
+    _applyShortcut((v) => MarkdownEditing.insertText(v, text));
   }
 
   Future<void> _importNotes() async {
@@ -1260,6 +1318,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     NoteInsertMenu(
                       controller: _editorController,
                       focusNode: _editorFocus,
+                      onPickImage: _pickAndInsertImage,
+                      onPickFile: _pickAndInsertFile,
                     ),
                   const SizedBox(width: 8),
                   _ModeSwitcher(mode: _mode, onChanged: _setMode),
@@ -1322,6 +1382,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             _applyShortcut(MarkdownEditing.insertLink),
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
             _applyShortcut(MarkdownEditing.insertLink),
+        // 智能粘贴:剪贴板是图片(截屏等)→ 落盘插图,否则按文本粘贴
+        const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
+            _pasteSmart,
+        const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+            _pasteSmart,
         // Tab 缩进/反缩进(列表嵌套),拦掉默认的焦点切换
         const SingleActivator(LogicalKeyboardKey.tab): () =>
             _applyShortcut(MarkdownEditing.indentLines),
@@ -1348,19 +1413,27 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                   : NoteViewMode.edit,
             ),
       },
-      // 拖文件进来插入图片/链接
+      // 拖文件进来:复制进资源目录后插入(图片语法/附件链接)
       child: DropTarget(
-        onDragDone: (detail) {
+        onDragDone: (detail) async {
           final paths = [
             for (final f in detail.files)
               if (f.path.isNotEmpty) f.path,
           ];
           if (paths.isEmpty) return;
-          _editorController.value = MarkdownEditing.insertDroppedPaths(
-            _editorController.value,
-            paths,
-          );
-          _editorFocus.requestFocus();
+          try {
+            final assets = <(String, String)>[];
+            for (final source in paths) {
+              assets.add((source, await NoteAssetStore.importFile(source)));
+            }
+            _editorController.value = MarkdownEditing.insertStoredAssets(
+              _editorController.value,
+              assets,
+            );
+            _editorFocus.requestFocus();
+          } catch (e) {
+            _toast('插入失败: $e');
+          }
         },
         // 版心居中(宽度最高 760)靠 contentPadding 实现,但那会把 TextField
         // 多行时的内建滚动条推到正文右缘(而非内容区最右)。这里屏蔽内建滚动条,

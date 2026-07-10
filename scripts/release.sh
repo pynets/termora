@@ -62,12 +62,21 @@ FULL_VERSION="${NEW_VERSION}+${BUILD_NUMBER}"
 TAG_NAME="v${NEW_VERSION}"
 DMG_NAME="Termora-${TAG_NAME}-macOS.dmg"
 
+# 在发布提交产生之前,先抓最后一次提交内容作为更新说明。
+# 跳过 chore(release) 这类发布自身的提交(比如上一轮发布后没有新提交就再发),
+# 找不到实质提交时退回最后一条。
+LAST_COMMIT_MSG=$(git log -1 --invert-grep --grep='^chore(release)' --pretty=%B | sed -e 's/[[:space:]]*$//')
+if [ -z "$LAST_COMMIT_MSG" ]; then
+  LAST_COMMIT_MSG=$(git log -1 --pretty=%B | sed -e 's/[[:space:]]*$//')
+fi
+
 echo -e "\n${BLUE}👉 目标发布信息:${NC}"
 echo -e "   - 版本号    : ${GREEN}${NEW_VERSION}${NC}"
 echo -e "   - 构建号    : ${GREEN}${BUILD_NUMBER}${NC}"
 echo -e "   - 完整版本  : ${GREEN}${FULL_VERSION}${NC}"
 echo -e "   - Git Tag   : ${GREEN}${TAG_NAME}${NC}"
 echo -e "   - 安装包名  : ${GREEN}${DMG_NAME}${NC}"
+echo -e "   - 更新说明  : ${GREEN}$(echo "${LAST_COMMIT_MSG}" | head -n 1)${NC}(取自最后一次提交)"
 
 echo -e "\n${YELLOW}确认以上信息正确？按回车继续，按 Ctrl+C 退出...${NC}"
 read -r
@@ -159,11 +168,36 @@ git push -f origin "${TAG_NAME}"
 # 6. 上传安装包至 GitHub Release
 echo -e "\n${CYAN}[5/6] 创建 GitHub Release 并上传安装包...${NC}"
 
+# 生成中英双语 Release Notes(markdown 文件;heredoc 保证换行/格式原样,
+# 之前用 --notes "...\n..." 时 \n 不被 bash 展开,发布出去是字面反斜杠)
+NOTES_FILE="build/release_notes_${TAG_NAME}.md"
+cat > "${NOTES_FILE}" <<EOF
+## 🚀 Termora ${TAG_NAME}
+
+### 📝 What's Changed / 更新内容
+
+${LAST_COMMIT_MSG}
+
+---
+
+### 📥 Download & Install (English)
+
+- **macOS**: Download \`${DMG_NAME}\` below, open it, then drag **Termora.app** into the \`/Applications\` folder.
+- **Upgrading?** Just launch Termora — it detects this release automatically. Click **Upgrade Now** to update in place and relaunch.
+
+---
+
+### 📥 下载与安装（中文）
+
+- **macOS**：下载下方的 \`${DMG_NAME}\`，打开后将 **Termora.app** 拖入 \`/Applications\` 文件夹即可。
+- **老版本升级**：直接启动 Termora，应用会自动检测到本次更新，点击「立即升级」即可原地升级并自动重启。
+EOF
+echo -e "  ✔ 已生成双语 Release Notes: ${NOTES_FILE}"
+
 # 优先探测是否安装且已登录 gh cli
 if command -v gh &> /dev/null && gh auth status &> /dev/null; then
   echo -e "  👉 使用 GitHub CLI (gh) 创建 Release..."
-  RELEASE_NOTES="### 🚀 Termora ${TAG_NAME} Release\n\n#### 📥 下载与安装\n- **macOS 安装包**: 下载下方 \`${DMG_NAME}\`\n- 打开后将 **Termora.app** 拖入 \`/Applications\` 文件夹即可。\n- 已安装旧版本的用户:启动 Termora 会自动检测到本次更新,点「立即升级」即可原地升级并重启。"
-  gh release create "${TAG_NAME}" "${DMG_OUTPUT}" --title "Termora ${TAG_NAME} Release" --notes "${RELEASE_NOTES}" --target main
+  gh release create "${TAG_NAME}" "${DMG_OUTPUT}" --title "Termora ${TAG_NAME}" --notes-file "${NOTES_FILE}" --target main
   gh repo edit --homepage "https://github.com/pynets/termora/releases/latest" 2>/dev/null || true
   echo -e "${GREEN}  ✔ 通过 gh cli 发布成功！${NC}"
 else
@@ -181,11 +215,25 @@ else
     REPO_NAME=$(git remote get-url origin | sed -n 's/.*github.com[:\/]\([^\/]*\)\/\([^\.]*\).*/\2/p')
 
     echo -e "  👉 创建 Release 记录..."
+    # 用 python3 把 notes 文件安全编码进 JSON(保留换行与中英文,不再手拼 \n)
+    REQUEST_BODY=$(python3 - "$TAG_NAME" "$NOTES_FILE" <<'PYEOF'
+import json, sys
+tag, notes_path = sys.argv[1], sys.argv[2]
+with open(notes_path, encoding='utf-8') as f:
+    body = f.read()
+print(json.dumps({
+    "tag_name": tag,
+    "target_commitish": "main",
+    "name": f"Termora {tag}",
+    "body": body,
+}))
+PYEOF
+)
     CREATE_RESP=$(curl -s -X POST -H "Accept: application/vnd.github+json" \
       -H "Authorization: Bearer ${GH_TOKEN}" \
       -H "X-GitHub-Api-Version: 2022-11-28" \
       "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases" \
-      -d "{\"tag_name\":\"${TAG_NAME}\",\"target_commitish\":\"main\",\"name\":\"Termora ${TAG_NAME} Release\",\"body\":\"### 🚀 Termora ${TAG_NAME} Release\\n\\n#### 📥 下载与安装 (macOS)\\n下载下面的 \`${DMG_NAME}\` 并打开，拖入 Applications 文件夹即可安装。\\n已安装旧版本的用户：启动 Termora 会自动检测到本次更新，点「立即升级」即可原地升级并重启。\"}")
+      -d "${REQUEST_BODY}")
 
     RELEASE_ID=$(echo "$CREATE_RESP" | grep -m 1 '"id":' | sed 's/[^0-9]//g')
     if [ -n "$RELEASE_ID" ]; then

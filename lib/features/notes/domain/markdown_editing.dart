@@ -401,14 +401,23 @@ class MarkdownEditing {
   static TextEditingValue insertDroppedPaths(
     TextEditingValue value,
     List<String> paths,
+  ) => insertStoredAssets(value, [for (final p in paths) (p, p)]);
+
+  /// 插入落地后的资源:显示名取原文件名,目标用落地路径。
+  /// 图片走图片语法,视频/任意文件走链接语法(预览渲染成附件卡片)。
+  static TextEditingValue insertStoredAssets(
+    TextEditingValue value,
+    List<(String original, String stored)> assets,
   ) {
-    if (paths.isEmpty) return value;
+    if (assets.isEmpty) return value;
     final lines = <String>[];
-    for (final path in paths) {
-      final name = path.split(RegExp(r'[/\\]')).last;
+    for (final (original, stored) in assets) {
+      final name = original.split(RegExp(r'[/\\]')).last;
       final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
       lines.add(
-        _imageExtensions.contains(ext) ? '![$name]($path)' : '[$name]($path)',
+        _imageExtensions.contains(ext)
+            ? '![$name]($stored)'
+            : '[$name]($stored)',
       );
     }
     return insertBlock(value, lines.join('\n'));

@@ -594,6 +594,30 @@ void main() {
     expect(source, '甲\n乙\n\n丙');
   });
 
+  testWidgets('本地附件链接渲染成卡片:视频图标+缺失提示,普通网址仍是链接', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MarkdownPreview(
+            source: '[演示.mp4](/tmp/termora不存在的附件.mp4)\n\n'
+                '[官网](https://a.io)',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 视频附件卡片:类型图标 + 文件名 + 缺失提示
+    expect(find.byIcon(LucideIcons.clapperboard), findsOneWidget);
+    expect(find.text('演示.mp4'), findsOneWidget);
+    expect(find.text('(文件缺失)'), findsOneWidget);
+    // 普通 URL 不受影响,仍按链接渲染
+    expect(find.text('官网'), findsOneWidget);
+    expect(find.byIcon(LucideIcons.paperclip), findsNothing);
+  });
+
   testWidgets('MarkdownPreview 渲染标题/代码块/列表/表格/公式', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(

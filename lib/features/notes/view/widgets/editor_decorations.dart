@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
@@ -160,8 +162,19 @@ class _DecorationsPainter extends CustomPainter {
       return Rect.fromPoints(toLocal(r.topLeft), toLocal(r.bottomRight));
     }
 
-    _paintBlockBackgrounds(canvas, size, tokens, boxOf);
-    _paintMarkers(canvas, text, tokens, isActive, boxOf);
+    /// token 覆盖区域的最后一个选区盒 —— 长行软换行成多个视觉行时,
+    /// 块底色的下边界必须取末行盒,否则背景只盖到第一个视觉行。
+    Rect? lastBoxOf(int start, int end) {
+      final boxes = render.getBoxesForSelection(
+        TextSelection(baseOffset: start, extentOffset: end),
+      );
+      if (boxes.isEmpty) return null;
+      final r = boxes.last.toRect();
+      return Rect.fromPoints(toLocal(r.topLeft), toLocal(r.bottomRight));
+    }
+
+    _paintBlockBackgrounds(canvas, size, tokens, boxOf, lastBoxOf);
+    _paintMarkers(canvas, text, tokens, isActive, boxOf, lastBoxOf);
   }
 
   /// 代码块/公式块的整块圆角底色(围栏行已隐藏,底色即块的边界)
@@ -170,10 +183,11 @@ class _DecorationsPainter extends CustomPainter {
     Size size,
     List<MdSourceToken> tokens,
     Rect? Function(int, int) boxOf,
+    Rect? Function(int, int) lastBoxOf,
   ) {
     for (final (first, last) in blockBackgroundGroups(tokens)) {
       final top = boxOf(first.start, first.end);
-      final bottom = identical(first, last) ? top : boxOf(last.start, last.end);
+      final bottom = lastBoxOf(last.start, last.end);
       if (top == null || bottom == null) continue;
       final rect = Rect.fromLTRB(
         _blockInset,
@@ -200,6 +214,7 @@ class _DecorationsPainter extends CustomPainter {
     List<MdSourceToken> tokens,
     bool Function(MdSourceToken) isActive,
     Rect? Function(int, int) boxOf,
+    Rect? Function(int, int) lastBoxOf,
   ) {
     for (final t in tokens) {
       if (isActive(t)) continue;
@@ -220,9 +235,15 @@ class _DecorationsPainter extends CustomPainter {
             );
           }
         case MdSourceKind.quote:
+          // 引用行可能软换行成多个视觉行:竖条下边界取整个逻辑行的末盒,
+          // 否则长引用只有第一视觉行有竖条
+          var lineEnd = text.indexOf('\n', t.end);
+          if (lineEnd < 0) lineEnd = text.length;
+          final endRect = lineEnd > t.end ? lastBoxOf(t.end, lineEnd) : null;
+          final barBottom = math.max(rect.bottom, endRect?.bottom ?? 0);
           canvas.drawRRect(
             RRect.fromRectAndRadius(
-              Rect.fromLTWH(rect.left + 1, rect.top, 3, rect.height),
+              Rect.fromLTRB(rect.left + 1, rect.top, rect.left + 4, barBottom),
               const Radius.circular(1.5),
             ),
             Paint()..color = AppTheme.brandColor.withValues(alpha: 0.55),
