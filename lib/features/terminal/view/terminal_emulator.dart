@@ -1159,6 +1159,10 @@ mixin _TerminalEmulator on State<_TerminalSessionView> {
     if (softWrap) {
       _ensureLineCount(_cursorY + 1, type);
       _lines[_cursorY].isWrapped = true;
+      // 软折行补出的新行就是当前开放的输出行。不置回 true 的话,
+      // 随后的 _ensureCursorLine 会因「末行不开放」再追加一行并跳过去,
+      // 每次折行都多出一条空行(readline 的 <SP>\r 强制折行手法必踩)。
+      _isLastOutputLineOpen = true;
     } else if (_cursorY >= 0 && _cursorY < _lines.length) {
       _lines[_cursorY].isWrapped = false;
     }
