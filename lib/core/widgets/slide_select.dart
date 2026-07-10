@@ -44,12 +44,17 @@ class SlideSelectController<K> extends ChangeNotifier {
     if (!additive) _base = const {};
   }
 
-  /// 框选区间更新:选择 = base ∪ items[lo..hi]
-  void _applyRange(int a, int b, List<K> items) {
-    if (items.isEmpty) return;
-    final lo = (a < b ? a : b).clamp(0, items.length - 1);
-    final hi = (a < b ? b : a).clamp(0, items.length - 1);
-    final next = <K>{..._base, for (var i = lo; i <= hi; i++) items[i]};
+  /// 框选区间更新:选择 = base ∪ items[lo..hi];a/b 传 null 表示
+  /// 选框没罩住任何行(全在空白),回到 base。
+  void _applyRange(int? a, int? b, List<K> items) {
+    final Set<K> next;
+    if (a == null || b == null || items.isEmpty) {
+      next = Set.of(_base);
+    } else {
+      final lo = (a < b ? a : b).clamp(0, items.length - 1);
+      final hi = (a < b ? b : a).clamp(0, items.length - 1);
+      next = <K>{..._base, for (var i = lo; i <= hi; i++) items[i]};
+    }
     if (next.length == _selected.length && next.containsAll(_selected)) return;
     _selected
       ..clear()
@@ -161,9 +166,6 @@ class _SlideSelectAreaState<K> extends State<SlideSelectArea<K>> {
   Offset? _downGlobal;
   Offset? _currentGlobal;
   int? _downIndex;
-
-  /// 框选锚点行(按下点在空白时,取拖动中首个命中的行)
-  int? _anchorIndex;
   bool _marquee = false;
   bool _moved = false;
 
@@ -199,10 +201,26 @@ class _SlideSelectAreaState<K> extends State<SlideSelectArea<K>> {
     _downGlobal = event.position;
     _currentGlobal = event.position;
     _downIndex = _hitRowIndex(event.position);
-    _anchorIndex = _downIndex;
     _marquee = false;
     _moved = false;
     widget.controller._beginPress();
+  }
+
+  /// 沿 y 方向从 [fromY] 向 [toY] 步进探测,返回最先命中的行 index。
+  /// 起点落在空白/行间隙时也能找到选框真正罩住的第一行 —— 不依赖
+  /// move 事件的采样连续性(快速拖动一帧能跳过好几行)。
+  int? _probeIndex(double globalX, double fromY, double toY) {
+    const step = 8.0;
+    final forward = toY >= fromY;
+    for (
+      var y = fromY;
+      forward ? y <= toY : y >= toY;
+      y += forward ? step : -step
+    ) {
+      final index = _hitRowIndex(Offset(globalX, y));
+      if (index != null) return index;
+    }
+    return _hitRowIndex(Offset(globalX, toY));
   }
 
   void _handleMove(PointerMoveEvent event) {
@@ -221,10 +239,20 @@ class _SlideSelectAreaState<K> extends State<SlideSelectArea<K>> {
         return;
       }
     }
-    final index = _hitRowIndex(event.position);
-    if (index != null) {
-      _anchorIndex ??= index;
-      widget.controller._applyRange(_anchorIndex!, index, widget.items());
+    // 选框按几何 y 区间圈行:顶边向下、底边向上各探测出边界行,
+    // 区间内全选 —— 与拖动速度、move 采样密度无关
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      final centerX = box
+          .localToGlobal(Offset(box.size.width / 2, 0))
+          .dx;
+      final topY = down.dy < event.position.dy ? down.dy : event.position.dy;
+      final bottomY = down.dy < event.position.dy ? event.position.dy : down.dy;
+      final top = _probeIndex(centerX, topY, bottomY);
+      final bottom = top == null
+          ? null
+          : _probeIndex(centerX, bottomY, topY);
+      widget.controller._applyRange(top, bottom, widget.items());
     }
     setState(() {}); // 重画选框
   }
@@ -257,7 +285,6 @@ class _SlideSelectAreaState<K> extends State<SlideSelectArea<K>> {
       _downGlobal = null;
       _currentGlobal = null;
       _downIndex = null;
-      _anchorIndex = null;
       _marquee = false;
       _moved = false;
     });
