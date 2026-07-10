@@ -240,7 +240,10 @@ class SettingsDialog extends ConsumerWidget {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          InkWell(
+                          // Flexible + 内层 ellipsis:窄对话框下 URL 收缩,
+                          // 不再把 MIT License 顶出边界(RenderFlex overflow)
+                          Flexible(
+                            child: InkWell(
                             borderRadius: BorderRadius.circular(4),
                             onTap: () {
                               if (Platform.isMacOS) {
@@ -270,17 +273,22 @@ class SettingsDialog extends ConsumerWidget {
                                     color: AppTheme.brandColor,
                                   ),
                                   const SizedBox(width: 5),
-                                  Text(
-                                    'https://github.com/pynets/termora',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppTheme.brandColor,
-                                      decoration: TextDecoration.underline,
+                                  Flexible(
+                                    child: Text(
+                                      'https://github.com/pynets/termora',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.brandColor,
+                                        decoration: TextDecoration.underline,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
+                          ),
                           ),
                           const Spacer(),
                           Text(

@@ -20,6 +20,7 @@ import 'package:termora/features/database/view/widgets/db_data_grid.dart';
 import 'package:termora/features/database/view/widgets/export_dialog.dart';
 import 'package:termora/features/database/view/widgets/sql_editor.dart';
 import 'package:termora/features/database/view/widgets/table_structure_view.dart';
+import 'package:termora/features/database/view/widgets/transfer_dialog.dart';
 import 'package:termora/features/database/view/widgets/variables_dialog.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
 
@@ -137,12 +138,17 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
             padding: const EdgeInsets.fromLTRB(14, 12, 6, 6),
             child: Row(
               children: [
-                Text(
-                  tr('数据库连接'),
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.headingColor,
+                // Flexible + ellipsis:侧栏被压窄时标题收缩,不顶出加号按钮
+                Flexible(
+                  child: Text(
+                    tr('数据库连接'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.headingColor,
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -367,10 +373,13 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
         isConnected ? LucideIcons.unplug : LucideIcons.plug,
       ),
       ('refresh', tr('刷新元数据'), LucideIcons.refreshCw),
+      ('export', tr('导出 SQL 脚本'), LucideIcons.fileDown),
+      ('import', tr('导入 SQL 脚本'), LucideIcons.fileUp),
+      ('migrate', tr('迁移到其它连接'), LucideIcons.arrowRightLeft),
       ('edit', tr('编辑连接'), LucideIcons.pencilLine),
       ('delete', tr('删除连接'), LucideIcons.trash2),
     ]).then((action) async {
-      if (action == null) return;
+      if (action == null || !mounted) return;
       final notifier = ref.read(dbSessionProvider.notifier);
       switch (action) {
         case 'toggle':
@@ -381,6 +390,24 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           if (isConnected) {
             notifier.connect(config, forceReconnect: true);
           }
+        case 'export':
+          showTransferDialog(
+            context,
+            source: config,
+            mode: DbTransferMode.export,
+          );
+        case 'import':
+          showTransferDialog(
+            context,
+            source: config,
+            mode: DbTransferMode.importScript,
+          );
+        case 'migrate':
+          showTransferDialog(
+            context,
+            source: config,
+            mode: DbTransferMode.migrate,
+          );
         case 'edit':
           _editConnection(config);
         case 'delete':
