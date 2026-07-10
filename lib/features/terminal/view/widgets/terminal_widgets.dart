@@ -2650,15 +2650,31 @@ class _PanelFileRowState extends State<_PanelFileRow> {
   bool _hovered = false;
 
   @override
-  Widget build(BuildContext context) {
-    final row = _buildRow();
+  Widget build(BuildContext context) => _buildRow();
+
+  /// 行首图标 = 「拖出到 Finder」的拖拽手柄(文件管理器惯例:拖图标)。
+  /// 之前整行都是 native 拖拽热区:macOS 原生检测移动几像素就启动、
+  /// 不分方向,会先于滑动多选的垂直判定掐断指针流(PointerCancel),
+  /// 导致文件面板上按住下划圈选永远失败。缩到图标后行主体完全让给
+  /// 滑选/点击,零竞态。
+  Widget _buildLeadingIcon() {
+    final node = widget.node;
+    final icon = Icon(
+      node.isDir ? LucideIcons.folder300 : LucideIcons.file300,
+      size: 14,
+      color: node.isDir ? AppTheme.brandColor : AppTheme.subtleTextColor,
+    );
     final provider = widget.dragItemProvider;
-    if (provider == null) return row;
+    if (provider == null) return icon;
     // 拖出到 Finder:落点处触发下载(见 _dragItemFor)
-    return sdd.DragItemWidget(
-      allowedOperations: () => [sdd.DropOperation.copy],
-      dragItemProvider: (_) => provider(),
-      child: sdd.DraggableWidget(child: row),
+    return Tooltip(
+      message: '拖动图标可拖出到 Finder',
+      waitDuration: const Duration(milliseconds: 800),
+      child: sdd.DragItemWidget(
+        allowedOperations: () => [sdd.DropOperation.copy],
+        dragItemProvider: (_) => provider(),
+        child: sdd.DraggableWidget(child: icon),
+      ),
     );
   }
 
@@ -2709,13 +2725,7 @@ class _PanelFileRowState extends State<_PanelFileRow> {
               padding: const EdgeInsets.fromLTRB(8, 4.5, 4, 4.5),
               child: Row(
                 children: [
-                  Icon(
-                    node.isDir ? LucideIcons.folder300 : LucideIcons.file300,
-                    size: 14,
-                    color: node.isDir
-                        ? AppTheme.brandColor
-                        : AppTheme.subtleTextColor,
-                  ),
+                  _buildLeadingIcon(),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
