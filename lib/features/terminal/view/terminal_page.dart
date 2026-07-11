@@ -35,6 +35,7 @@ import 'package:termora/features/terminal/view/widgets/highlight_manager.dart';
 import 'package:termora/core/widgets/app_toast.dart';
 import 'package:toastification/toastification.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
+import 'package:termora/app/shell/page_top_bar.dart';
 
 part '../domain/terminal_models.dart';
 part 'terminal_emulator.dart';
@@ -886,6 +887,13 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
   // Build
   // ---------------------------------------------------------------------------
 
+  /// 页面头部副标题:当前活动会话的名称(远程工作区不显示本页头)
+  String? get _headerSubtitle {
+    final key = _activeSessionKey;
+    if (key == null) return null;
+    return _descriptorFor(key)?.title;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -893,6 +901,13 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 远程工作区复用本页,由 RemotePage 提供自己的头部,这里只在独立终端页显示
+          if (!widget.remoteWorkspace)
+            PageTopBar(
+              icon: LucideIcons.squareTerminal300,
+              title: AppL10n.current.terminal,
+              subtitle: _headerSubtitle,
+            ),
           Expanded(child: _buildPaneArea(context)),
           _buildSessionTabBar(context),
         ],

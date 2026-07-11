@@ -140,8 +140,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       );
 
       await windowManager.setBounds(newBounds, animate: true);
+      // 保持隐藏原生标题栏:红绿灯浮在自绘一体化顶栏的左侧预留区内,
+      // 拖动由 WindowDragArea 承担(避免原生栏与自绘栏叠成两层)
       await windowManager.setTitleBarStyle(
-        TitleBarStyle.normal,
+        TitleBarStyle.hidden,
         windowButtonVisibility: true,
       );
 

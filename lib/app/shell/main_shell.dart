@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +16,7 @@ import 'package:termora/features/settings/controller/app_update_controller.dart'
 import 'package:termora/features/settings/controller/setting_providers.dart';
 import 'package:termora/features/settings/view/settings_dialog.dart';
 import 'package:termora/features/settings/view/update_dialog.dart';
+import 'package:termora/app/shell/window_top_bar.dart';
 import 'package:termora/features/terminal/view/terminal_page.dart';
 
 /// 主界面外壳 — 左侧 NavigationRail 导航
@@ -115,31 +117,57 @@ class _MainShellState extends ConsumerState<MainShell> {
     ref.watch(dbScheduleControllerProvider);
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      body: Row(
+      // 背景与侧栏 rail 同为 surfaceColor:内容卡片顶左圆角外露处不再露出
+      // 异色三角(消除色差),侧栏与内容之间也不再需要竖分隔线。
+      backgroundColor: AppTheme.surfaceColor,
+      // 参考 superdesk 一体化布局:侧栏 + 内容卡片各自铺到顶,内容整体下移
+      // kWindowTitleBarHeight,顶部叠一条透明可拖动区(红绿灯浮于其上),
+      // 内容卡片顶左圆角贴住右上,把右侧完整让给内容区。
+      body: Stack(
         children: [
-          _buildRail(l10n, updateState),
-          VerticalDivider(width: 0.5, color: AppTheme.borderColor),
-          Expanded(
-            child: Navigator(
-              key: _contentNavigatorKey,
-              pages: [
-                MaterialPage(
-                  key: const ValueKey('main_shell_content'),
-                  child: IndexedStack(
-                    index: _selectedIndex,
-                    children: const [
-                      _FeatureHost(child: TerminalPage()),
-                      _FeatureHost(child: RemotePage()),
-                      _FeatureHost(child: DatabasePage()),
-                      _FeatureHost(child: NotesPage()),
+          Row(
+            children: [
+              _buildRail(l10n, updateState),
+              Expanded(
+                // 内容区顶满上边:页面自绘顶栏直达顶部。顶部透明拖动条为
+                // translucent 命中,单击穿透到页面按钮,空白处仍可拖动窗口
+                // (与原生 macOS 工具栏一致)。顶左圆角只做卡片收边。
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                  ),
+                  child: Navigator(
+                    key: _contentNavigatorKey,
+                    pages: [
+                      MaterialPage(
+                        key: const ValueKey('main_shell_content'),
+                        child: IndexedStack(
+                          index: _selectedIndex,
+                          children: const [
+                            _FeatureHost(child: TerminalPage()),
+                            _FeatureHost(child: RemotePage()),
+                            _FeatureHost(child: DatabasePage()),
+                            _FeatureHost(child: NotesPage()),
+                          ],
+                        ),
+                      ),
                     ],
+                    onDidRemovePage: (page) {},
                   ),
                 ),
-              ],
-              onDidRemovePage: (page) {},
-            ),
+              ),
+            ],
           ),
+          // 顶部透明拖动条(铺满,含侧栏上方红绿灯区)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: WindowDragArea(),
+          ),
+          // 非 macOS:自绘窗口控件叠在右上角
+          if (!Platform.isMacOS)
+            const Positioned(top: 0, right: 0, child: WindowCaptionButtons()),
         ],
       ),
     );
@@ -176,7 +204,8 @@ class _MainShellState extends ConsumerState<MainShell> {
           fontSize: 11,
           color: AppTheme.subtleTextColor,
         ),
-        leading: const SizedBox(height: 8),
+        // 顶部留出标题栏高度:让首个导航图标避开浮在左上的红绿灯
+        leading: const SizedBox(height: kWindowTitleBarHeight + 8),
         trailing: Expanded(
           child: Align(
             alignment: Alignment.bottomCenter,

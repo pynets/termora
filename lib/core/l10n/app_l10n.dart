@@ -52,12 +52,19 @@ class AppL10n {
   String get database => isZh ? '数据库' : 'Database';
   String get notes => isZh ? '笔记' : 'Notes';
   String get settings => isZh ? '设置' : 'Settings';
+  String get notConnected => isZh ? '未连接' : 'Not connected';
+  String get hostList => isZh ? '主机列表' : 'Hosts';
+  String get allNotes => isZh ? '全部笔记' : 'All Notes';
+  String hostsSummary(int n) => isZh ? '$n 台主机' : '$n hosts';
   String get settingsGeneral => isZh ? '通用' : 'General';
   String get settingsAppearance => isZh ? '外观' : 'Appearance';
   String get settingsAbout => isZh ? '关于' : 'About';
 
   // Settings Dialog
   String get close => isZh ? '关闭' : 'Close';
+  String get minimizeWindow => isZh ? '最小化' : 'Minimize';
+  String get maximizeWindow => isZh ? '最大化' : 'Maximize';
+  String get restoreWindow => isZh ? '还原' : 'Restore';
   String get language => isZh ? '语言 / Language' : 'Language / 语言';
   String get followSystem => isZh ? '跟随系统' : 'System';
   String get chinese => '简体中文';

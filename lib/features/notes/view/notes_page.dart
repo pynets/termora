@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:termora/app/shell/page_top_bar.dart';
 import 'package:toastification/toastification.dart';
 
 import 'package:termora/core/utils/file_picker_helper.dart';
@@ -616,28 +617,47 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final state = ref.watch(notesProvider);
     _syncEditor(state.selected);
 
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 收缩栏:动画折叠,内容用 OverflowBox 固定宽度避免折叠中挤压重排
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          width: _showSidebar ? 260 : 0,
-          child: ClipRect(
-            child: OverflowBox(
-              alignment: Alignment.centerLeft,
-              minWidth: 260,
-              maxWidth: 260,
-              child: _buildSidebar(state),
-            ),
+        PageTopBar(
+          icon: LucideIcons.notebookPen300,
+          title: AppL10n.current.notes,
+          subtitle: _headerSubtitle(state),
+        ),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 收缩栏:动画折叠,内容用 OverflowBox 固定宽度避免折叠中挤压重排
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                width: _showSidebar ? 260 : 0,
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.centerLeft,
+                    minWidth: 260,
+                    maxWidth: 260,
+                    child: _buildSidebar(state),
+                  ),
+                ),
+              ),
+              if (_showSidebar)
+                VerticalDivider(width: 0.5, color: AppTheme.borderColor),
+              Expanded(child: _buildWorkspace(state)),
+            ],
           ),
         ),
-        if (_showSidebar)
-          VerticalDivider(width: 0.5, color: AppTheme.borderColor),
-        Expanded(child: _buildWorkspace(state)),
       ],
     );
+  }
+
+  /// 页面头部副标题:当前笔记标题 → 当前笔记本名 → 全部笔记
+  String _headerSubtitle(NotesState state) {
+    final note = state.selected;
+    if (note != null && note.title.isNotEmpty) return note.title;
+    return state.activeNotebook?.name ?? AppL10n.current.allNotes;
   }
 
   // ══════════════ 左侧:笔记列表 ══════════════

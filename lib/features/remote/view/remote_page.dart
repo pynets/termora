@@ -19,6 +19,7 @@ import 'package:termora/features/remote/view/widgets/transfer_log_dialog.dart';
 import 'package:termora/features/remote/view/widgets/tunnel_manager.dart';
 import 'package:termora/features/terminal/view/terminal_page.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
+import 'package:termora/app/shell/page_top_bar.dart';
 
 /// 远程主机页 — WindTerm 式布局:
 /// 左侧保存的主机列表,右侧独立的 SSH 终端工作区(与「终端」页完全分离,
@@ -806,10 +807,18 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     final hosts = ref.watch(sshHostsProvider);
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
-      body: Stack(
+      body: Column(
         children: [
-          // 底层:终端工作区 + 永远可见的收起竖条(终端只让出竖条宽度)
-          Row(
+          PageTopBar(
+            icon: LucideIcons.server300,
+            title: AppL10n.current.remote,
+            subtitle: AppL10n.current.hostsSummary(hosts.length),
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                // 底层:终端工作区 + 永远可见的收起竖条(终端只让出竖条宽度)
+                Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
@@ -849,8 +858,11 @@ class _RemotePageState extends ConsumerState<RemotePage> {
               ),
             ],
           ),
-          // 上层:点击竖条外区域关闭的遮罩 + 从右侧浮出的主机面板
-          _buildFloatingSidebar(hosts),
+                // 上层:点击竖条外区域关闭的遮罩 + 从右侧浮出的主机面板
+                _buildFloatingSidebar(hosts),
+              ],
+            ),
+          ),
         ],
       ),
     );

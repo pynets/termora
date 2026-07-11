@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:termora/app/shell/page_top_bar.dart';
 import 'package:re_editor/re_editor.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
@@ -116,14 +117,34 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
   Widget build(BuildContext context) {
     final session = ref.watch(dbSessionProvider);
 
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(width: 250, child: _buildNavigator(session)),
-        VerticalDivider(width: 0.5, color: AppTheme.borderColor),
-        Expanded(child: _buildContent(session)),
+        PageTopBar(
+          icon: LucideIcons.database300,
+          title: AppL10n.current.database,
+          subtitle: _headerSubtitle(session),
+        ),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(width: 250, child: _buildNavigator(session)),
+              VerticalDivider(width: 0.5, color: AppTheme.borderColor),
+              Expanded(child: _buildContent(session)),
+            ],
+          ),
+        ),
       ],
     );
+  }
+
+  /// 页面头部副标题:当前活动连接名(带服务器版本),未连接则提示
+  String _headerSubtitle(DbSessionsState session) {
+    final cfg = session.config;
+    if (cfg == null || cfg.name.isEmpty) return AppL10n.current.notConnected;
+    final ver = session.serverVersion;
+    return (ver != null && ver.isNotEmpty) ? '${cfg.name} · $ver' : cfg.name;
   }
 
   // ══════════════════════ 左侧导航 ══════════════════════
