@@ -11,6 +11,8 @@ Future<Map<String, String>?> showVariablesDialog(
 }) {
   return showDialog<Map<String, String>>(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (context) => _VariablesDialog(
       title: tr('SQL 变量'),
       description: '在 SQL 中用 \${变量名} 引用,执行时自动替换',
@@ -30,6 +32,8 @@ Future<Map<String, String>?> promptMissingVariables(
 }) {
   return showDialog<Map<String, String>>(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (context) => _VariablesDialog(
       title: title,
       description: hint,

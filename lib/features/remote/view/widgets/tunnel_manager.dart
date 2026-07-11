@@ -12,6 +12,8 @@ Future<void> showTunnelManager(BuildContext context, SshHost host) async {
   if (!context.mounted) return;
   await showDialog<void>(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (context) => _TunnelManagerDialog(host: host),
   );
 }
@@ -196,6 +198,8 @@ class _TunnelManagerDialog extends StatelessWidget {
   Future<void> _edit(BuildContext context, SshTunnel? existing) async {
     final tunnel = await showDialog<SshTunnel>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => _TunnelEditDialog(hostId: host.id, existing: existing),
     );
     if (tunnel != null) await TunnelStore.upsert(tunnel);

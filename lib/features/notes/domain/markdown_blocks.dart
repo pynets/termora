@@ -49,7 +49,9 @@ class MarkdownBlockSplitter {
   static final _imageLineRe = RegExp(r'^!\[[^\]]*\]\([^)]*\)$');
 
   static List<SourceBlock> split(String source) {
-    final lines = source.replaceAll('\r\n', '\n').split('\n');
+    // 不做换行归一:块区间要按原始字符串切,归一会让偏移错位啃字。
+    // CRLF 由文本入口统一转 LF(MarkdownEditing.normalizeNewlines)。
+    final lines = source.split('\n');
     // 每行的起始偏移
     final offsets = List<int>.filled(lines.length + 1, 0);
     for (var i = 0; i < lines.length; i++) {

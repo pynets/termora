@@ -11,6 +11,8 @@ Future<void> showLinkMatcherManager(BuildContext context) async {
   if (!context.mounted) return;
   await showDialog<void>(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (context) => const _LinkMatcherManagerDialog(),
   );
 }
@@ -147,6 +149,8 @@ class _LinkMatcherManagerDialog extends StatelessWidget {
   Future<void> _edit(BuildContext context, LinkMatcher? existing) async {
     final matcher = await showDialog<LinkMatcher>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => _LinkMatcherEditDialog(existing: existing),
     );
     if (matcher != null) await LinkMatcherStore.upsert(matcher);

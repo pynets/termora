@@ -314,6 +314,21 @@ class DbColumnFilter {
     op: op ?? this.op,
     value: value ?? this.value,
   );
+
+  Map<String, dynamic> toJson() => {
+    'column': column,
+    'op': op.name,
+    if (value.isNotEmpty) 'value': value,
+  };
+
+  factory DbColumnFilter.fromJson(Map<String, dynamic> json) => DbColumnFilter(
+    column: json['column'] as String? ?? '',
+    op: DbFilterOp.values.firstWhere(
+      (e) => e.name == json['op'],
+      orElse: () => DbFilterOp.equals,
+    ),
+    value: json['value'] as String? ?? '',
+  );
 }
 
 /// 把多个列过滤合成 WHERE 子句(AND 连接)+ 参数

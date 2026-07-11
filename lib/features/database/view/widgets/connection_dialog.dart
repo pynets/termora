@@ -16,6 +16,8 @@ Future<DbConnectionConfig?> showConnectionDialog(
 }) {
   return showDialog<DbConnectionConfig>(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (context) => _ConnectionDialog(existing: existing),
   );
 }
@@ -43,6 +45,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
   late int _sslAuthMode;
   late DbEngine _engine;
   bool _obscurePassword = true;
+  final ScrollController _scrollController = ScrollController();
 
   bool _testing = false;
   String? _testResult;
@@ -79,6 +82,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _name.dispose();
     _host.dispose();
     _port.dispose();
@@ -194,9 +198,10 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isMtls = _useSsl && _sslAuthMode == 2;
     return Dialog(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
+        constraints: const BoxConstraints(maxWidth: 540),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
           child: Column(
@@ -205,7 +210,11 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
             children: [
               Row(
                 children: [
-                  Icon(LucideIcons.database, size: 18, color: AppTheme.brandColor),
+                  Icon(
+                    LucideIcons.database,
+                    size: 18,
+                    color: AppTheme.brandColor,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     widget.existing == null ? tr('新建连接') : tr('编辑连接'),
@@ -217,299 +226,343 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 数据库类型
-                      Text(
-                        tr('类型'),
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.subtleTextColor,
+              const SizedBox(height: 16),
+              // 第一行：类型 + 连接名称
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 165,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tr('类型'),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.subtleTextColor,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        GlassDropdownButton<DbEngine>(
+                          value: _engine,
+                          items: [
+                            for (final e in DbEngine.values)
+                              GlassDropdownMenuItem(
+                                value: e,
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      switch (e) {
+                                        DbEngine.postgres =>
+                                          LucideIcons.database,
+                                        DbEngine.clickhouse =>
+                                          LucideIcons.server,
+                                        DbEngine.sqlite => LucideIcons.file,
+                                      },
+                                      size: 15,
+                                      color: AppTheme.brandColor,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      e.label,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppTheme.headingColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                          onChanged: (e) {
+                            if (e != null) _onEngineChanged(e);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _field(
+                      tr('连接名称'),
+                      _name,
+                      hint:
+                          _engine.isFileBased
+                              ? tr('默认: 文件名')
+                              : tr('默认: 数据库@主机'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (_engine.isFileBased)
+                _field(
+                  tr('数据库文件'),
+                  _database,
+                  hint: tr('选择 .db / .sqlite 文件'),
+                  suffix: IconButton(
+                    tooltip: tr('选择数据库文件'),
+                    icon: Icon(
+                      LucideIcons.folderOpen300,
+                      size: 15,
+                      color: AppTheme.subtleTextColor,
+                    ),
+                    splashRadius: 14,
+                    onPressed:
+                        () => _pickFile(
+                          _database,
+                          tr('选择 SQLite 数据库文件'),
+                        ),
+                  ),
+                ),
+              if (!_engine.isFileBased) ...[
+                // 第二行：主机 + 端口 + 数据库
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 5, child: _field(tr('主机'), _host)),
+                    const SizedBox(width: 10),
+                    SizedBox(width: 85, child: _field(tr('端口'), _port)),
+                    const SizedBox(width: 10),
+                    Expanded(flex: 4, child: _field(tr('数据库'), _database)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                // 第三行：用户名 + 密码
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _field(tr('用户名'), _username)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _field(
+                        tr('密码'),
+                        _password,
+                        hint: isMtls ? tr('选填，使用双向证书 mTLS 时可留空') : null,
+                        obscure: _obscurePassword,
+                        suffix: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? LucideIcons.eye
+                                : LucideIcons.eyeOff,
+                            size: 14,
+                            color: AppTheme.subtleTextColor,
+                          ),
+                          onPressed:
+                              () => setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      GlassDropdownButton<DbEngine>(
-                        value: _engine,
-                        items: [
-                          for (final e in DbEngine.values)
-                            GlassDropdownMenuItem(
-                              value: e,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    switch (e) {
-                                      DbEngine.postgres =>
-                                        LucideIcons.database,
-                                      DbEngine.clickhouse =>
-                                        LucideIcons.server,
-                                      DbEngine.sqlite => LucideIcons.file,
-                                    },
-                                    size: 15,
-                                    color: AppTheme.brandColor,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    e.label,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      color: AppTheme.headingColor,
-                                    ),
-                                  ),
-                                ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                // 第四行：SSL 卡片（把验证方式下拉选项嵌入到同一横向行中，点击开关不会导致弹窗高度剧震）
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceColor.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.borderColor),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: 38,
+                        child: Row(
+                          children: [
+                            Icon(
+                              LucideIcons.shieldCheck,
+                              size: 15,
+                              color:
+                                  _useSsl
+                                      ? AppTheme.brandColor
+                                      : AppTheme.subtleTextColor,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _engine == DbEngine.clickhouse
+                                  ? 'HTTPS (SSL)'
+                                  : tr('SSL / TLS 加密'),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.headingColor,
                               ),
                             ),
-                        ],
-                        onChanged: (e) {
-                          if (e != null) _onEngineChanged(e);
-                        },
+                            if (_useSsl &&
+                                _engine == DbEngine.postgres) ...[
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: GlassDropdownButton<int>(
+                                  value: _sslAuthMode,
+                                  items: const [
+                                    GlassDropdownMenuItem(
+                                      value: 0,
+                                      child: Text(
+                                        '默认 / 仅加密传输 (Require)',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                    GlassDropdownMenuItem(
+                                      value: 1,
+                                      child: Text(
+                                        '验证 CA 根证书 (Verify CA)',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                    GlassDropdownMenuItem(
+                                      value: 2,
+                                      child: Text(
+                                        '双向证书认证 (Client Cert / mTLS)',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (v) {
+                                    if (v != null) {
+                                      setState(() => _sslAuthMode = v);
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ] else ...[
+                              const Spacer(),
+                            ],
+                            SizedBox(
+                              height: 24,
+                              child: FittedBox(
+                                fit: BoxFit.contain,
+                                child: Switch(
+                                  value: _useSsl,
+                                  onChanged:
+                                      (v) => setState(() => _useSsl = v),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      _field(
-                        tr('连接名称'),
-                        _name,
-                        hint: _engine.isFileBased ? tr('默认: 文件名') : tr('默认: 数据库@主机'),
-                      ),
-                      const SizedBox(height: 10),
-                      if (_engine.isFileBased)
+                      if (_useSsl &&
+                          _engine == DbEngine.postgres &&
+                          (_sslAuthMode == 1 || _sslAuthMode == 2)) ...[
+                        const SizedBox(height: 10),
                         _field(
-                          tr('数据库文件'),
-                          _database,
-                          hint: tr('选择 .db / .sqlite 文件'),
+                          tr('根证书 (CA Root Cert)'),
+                          _sslRootCertPath,
+                          hint: tr('选填，验证自签或私有 CA 根证书'),
                           suffix: IconButton(
-                            tooltip: tr('选择数据库文件'),
+                            tooltip: tr('选择根证书文件'),
                             icon: Icon(
                               LucideIcons.folderOpen300,
                               size: 15,
                               color: AppTheme.subtleTextColor,
                             ),
                             splashRadius: 14,
-                            onPressed: () =>
-                                _pickFile(_database, tr('选择 SQLite 数据库文件')),
+                            onPressed:
+                                () => _pickFile(
+                                  _sslRootCertPath,
+                                  tr('选择 CA 根证书'),
+                                ),
                           ),
                         ),
-                      if (!_engine.isFileBased) ...[
-                      Row(
-                        children: [
-                          Expanded(flex: 3, child: _field(tr('主机'), _host)),
-                          const SizedBox(width: 10),
-                          Expanded(child: _field(tr('端口'), _port)),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      _field(tr('数据库'), _database),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(child: _field(tr('用户名'), _username)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _field(
-                              tr('密码'),
-                              _password,
-                              obscure: _obscurePassword,
-                              suffix: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? LucideIcons.eye
-                                      : LucideIcons.eyeOff,
-                                  size: 14,
-                                  color: AppTheme.subtleTextColor,
-                                ),
-                                onPressed:
-                                    () => setState(
-                                      () =>
-                                          _obscurePassword = !_obscurePassword,
-                                    ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      if (_engine == DbEngine.clickhouse)
-                        SwitchListTile(
-                          value: _useSsl,
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            'HTTPS (SSL)',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppTheme.bodyColor,
-                            ),
-                          ),
-                          subtitle: Text(
-                            tr('走 https 端口(默认 8443)'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.subtleTextColor,
-                            ),
-                          ),
-                          onChanged: (v) => setState(() => _useSsl = v),
-                        ),
-                      if (_engine == DbEngine.postgres) ...[
-                        SwitchListTile(
-                          value: _useSsl,
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            tr('使用 SSL / TLS'),
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppTheme.bodyColor,
-                            ),
-                          ),
-                          subtitle: Text(
-                            tr('开启加密传输'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.subtleTextColor,
-                            ),
-                          ),
-                          onChanged: (v) => setState(() => _useSsl = v),
-                        ),
-                        if (_useSsl) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            tr('验证方式'),
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.subtleTextColor,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          GlassDropdownButton<int>(
-                            value: _sslAuthMode,
-                            items: const [
-                              GlassDropdownMenuItem(
-                                value: 0,
-                                child: Text(
-                                  '默认 / 仅加密 (Require - 无需证书)',
-                                  style: TextStyle(fontSize: 12.5),
-                                ),
-                              ),
-                              GlassDropdownMenuItem(
-                                value: 1,
-                                child: Text(
-                                  '验证 CA 根证书 (Verify CA)',
-                                  style: TextStyle(fontSize: 12.5),
-                                ),
-                              ),
-                              GlassDropdownMenuItem(
-                                value: 2,
-                                child: Text(
-                                  '客户端双向认证 (Client Cert / mTLS)',
-                                  style: TextStyle(fontSize: 12.5),
-                                ),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              if (v != null) setState(() => _sslAuthMode = v);
-                            },
-                          ),
-                          if (_sslAuthMode == 1 || _sslAuthMode == 2) ...[
-                            const SizedBox(height: 10),
-                            _field(
-                              tr('根证书 (CA Root Cert)'),
-                              _sslRootCertPath,
-                              hint: tr('选填，验证自签或私有 CA 证书'),
-                              suffix: IconButton(
-                                tooltip: tr('选择根证书文件'),
-                                icon: Icon(
-                                  LucideIcons.folderOpen300,
-                                  size: 15,
-                                  color: AppTheme.subtleTextColor,
-                                ),
-                                splashRadius: 14,
-                                onPressed:
-                                    () => _pickFile(
-                                      _sslRootCertPath,
-                                      tr('选择 CA 根证书'),
-                                    ),
-                              ),
-                            ),
-                          ],
-                          if (_sslAuthMode == 2) ...[
-                            const SizedBox(height: 10),
-                            _field(
-                              tr('客户端证书 (Client Cert)'),
-                              _sslClientCertPath,
-                              hint: tr('必填，用于客户端双向认证'),
-                              suffix: IconButton(
-                                tooltip: tr('选择客户端证书文件'),
-                                icon: Icon(
-                                  LucideIcons.folderOpen300,
-                                  size: 15,
-                                  color: AppTheme.subtleTextColor,
-                                ),
-                                splashRadius: 14,
-                                onPressed:
-                                    () => _pickFile(
-                                      _sslClientCertPath,
-                                      tr('选择客户端证书'),
-                                    ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            _field(
-                              tr('客户端私钥 (Client Key)'),
-                              _sslClientKeyPath,
-                              hint: tr('必填，与客户端证书配套的私钥'),
-                              suffix: IconButton(
-                                tooltip: tr('选择客户端私钥文件'),
-                                icon: Icon(
-                                  LucideIcons.folderOpen300,
-                                  size: 15,
-                                  color: AppTheme.subtleTextColor,
-                                ),
-                                splashRadius: 14,
-                                onPressed:
-                                    () => _pickFile(
-                                      _sslClientKeyPath,
-                                      tr('选择客户端私钥'),
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ],
                       ],
+                      if (_useSsl &&
+                          _engine == DbEngine.postgres &&
+                          _sslAuthMode == 2) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _field(
+                                tr('客户端证书 (Client Cert)'),
+                                _sslClientCertPath,
+                                hint: tr('必填，用于客户端双向认证'),
+                                suffix: IconButton(
+                                  tooltip: tr('选择客户端证书文件'),
+                                  icon: Icon(
+                                    LucideIcons.folderOpen300,
+                                    size: 15,
+                                    color: AppTheme.subtleTextColor,
+                                  ),
+                                  splashRadius: 14,
+                                  onPressed:
+                                      () => _pickFile(
+                                        _sslClientCertPath,
+                                        tr('选择客户端证书'),
+                                      ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _field(
+                                tr('客户端私钥 (Client Key)'),
+                                _sslClientKeyPath,
+                                hint: tr('必填，配套私钥'),
+                                suffix: IconButton(
+                                  tooltip: tr('选择客户端私钥文件'),
+                                  icon: Icon(
+                                    LucideIcons.folderOpen300,
+                                    size: 15,
+                                    color: AppTheme.subtleTextColor,
+                                  ),
+                                  splashRadius: 14,
+                                  onPressed:
+                                      () => _pickFile(
+                                        _sslClientKeyPath,
+                                        tr('选择客户端私钥'),
+                                      ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ],
                   ),
                 ),
-              ),
+              ],
+              const SizedBox(height: 14),
               if (_testResult != null) ...[
-                const SizedBox(height: 4),
                 Text(
                   _testResult!,
-                  maxLines: 3,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
-                    color: _testOk ? AppTheme.successColor : AppTheme.errorColor,
+                    color:
+                        _testOk
+                            ? AppTheme.successColor
+                            : AppTheme.errorColor,
                   ),
                 ),
+                const SizedBox(height: 8),
               ],
-              const SizedBox(height: 12),
               Row(
                 children: [
                   TextButton.icon(
                     onPressed: _testing ? null : _test,
-                    icon: _testing
-                        ? const SizedBox(
-                            width: 13,
-                            height: 13,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(LucideIcons.plugZap, size: 14),
+                    icon:
+                        _testing
+                            ? const SizedBox(
+                              width: 13,
+                              height: 13,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                            : const Icon(LucideIcons.plugZap, size: 14),
                     label: Text(tr('测试连接')),
                   ),
                   const Spacer(),
@@ -519,8 +572,7 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: () =>
-                        Navigator.of(context).pop(_buildConfig()),
+                    onPressed: () => Navigator.of(context).pop(_buildConfig()),
                     child: Text(tr('保存')),
                   ),
                 ],
@@ -551,24 +603,32 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
           ),
         ),
         const SizedBox(height: 4),
-        TextField(
-          controller: controller,
-          obscureText: obscure,
-          style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(
-              fontSize: 12.5,
-              color: AppTheme.subtleTextColor.withValues(alpha: 0.7),
-            ),
-            suffixIcon: suffix,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppTheme.borderColor),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppTheme.borderColor),
+        SizedBox(
+          height: 38,
+          child: TextField(
+            controller: controller,
+            obscureText: obscure,
+            style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 10,
+              ),
+              hintText: hint,
+              hintStyle: TextStyle(
+                fontSize: 12.5,
+                color: AppTheme.subtleTextColor.withValues(alpha: 0.7),
+              ),
+              suffixIcon: suffix,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: AppTheme.borderColor),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: AppTheme.borderColor),
+              ),
             ),
           ),
         ),

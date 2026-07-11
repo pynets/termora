@@ -382,13 +382,25 @@ class MarkdownEditing {
     return lines.join('\n');
   }
 
-  /// 在光标处插入文本(有选区则替换),光标落在插入内容之后
+  /// 换行归一:CRLF(Windows)与孤立 CR(PDF/Excel 等复制源)统一成 LF。
+  /// Flutter 文本框不把孤立 \r 当换行渲染,不归一会表现成"粘贴丢换行";
+  /// \r\n 还会让块编辑器的偏移计算错位。所有文本入口(粘贴/导入/加载)都过这里。
+  static String normalizeNewlines(String text) =>
+      text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
+  /// 在光标处插入文本(有选区则替换),光标落在插入内容之后。换行自动归一。
   static TextEditingValue insertText(TextEditingValue value, String text) {
+    final normalized = normalizeNewlines(text);
     final current = value.text;
     final sel = _normalized(value.selection, current.length);
     return TextEditingValue(
-      text: current.substring(0, sel.start) + text + current.substring(sel.end),
-      selection: TextSelection.collapsed(offset: sel.start + text.length),
+      text:
+          current.substring(0, sel.start) +
+          normalized +
+          current.substring(sel.end),
+      selection: TextSelection.collapsed(
+        offset: sel.start + normalized.length,
+      ),
     );
   }
 

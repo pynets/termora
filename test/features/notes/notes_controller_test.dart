@@ -74,9 +74,10 @@ void main() {
     expect(state.selectedId, a);
   });
 
-  test('搜索按内容过滤,展示列表按更新时间倒序', () async {
+  test('搜索按内容过滤,"最近修改"模式按更新时间倒序', () async {
     SharedPreferences.setMockInitialValues({});
     final (container, controller) = await makeContainer();
+    controller.setSortMode(NoteSortMode.updated);
     final a = controller.create();
     await Future<void>.delayed(const Duration(milliseconds: 2));
     final b = controller.create();
@@ -95,9 +96,38 @@ void main() {
     expect(container.read(notesProvider).visibleNotes, hasLength(2));
   });
 
+  test('默认排序 = 名称数字自然序;置顶恒在前;模式持久化恢复', () async {
+    SharedPreferences.setMockInitialValues({});
+    final (container, controller) = await makeContainer();
+    expect(container.read(notesProvider).sortMode, NoteSortMode.title);
+
+    final a = controller.create();
+    final b = controller.create();
+    final c = controller.create();
+    controller.updateContent(a, '第10章');
+    controller.updateContent(b, '第2章');
+    controller.updateContent(c, 'abc');
+
+    // 数字自然序:abc < 第2章 < 第10章(数字按数值比较)
+    var visible = container.read(notesProvider).visibleNotes;
+    expect(visible.map((n) => n.title), ['abc', '第2章', '第10章']);
+
+    // 置顶优先于排序
+    await controller.togglePin(a);
+    visible = container.read(notesProvider).visibleNotes;
+    expect(visible.first.id, a);
+
+    // 切"最近创建"并持久化,重启(新容器)恢复
+    controller.setSortMode(NoteSortMode.created);
+    await controller.flush();
+    final (container2, _) = await makeContainer();
+    expect(container2.read(notesProvider).sortMode, NoteSortMode.created);
+  });
+
   test('置顶排序优先于更新时间', () async {
     SharedPreferences.setMockInitialValues({});
     final (container, controller) = await makeContainer();
+    controller.setSortMode(NoteSortMode.updated);
     final a = controller.create();
     await Future<void>.delayed(const Duration(milliseconds: 2));
     final b = controller.create();

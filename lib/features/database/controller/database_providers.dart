@@ -7,6 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:termora/core/services/workspace_store.dart';
 import 'package:termora/features/database/data/connection_store.dart';
 import 'package:termora/features/database/data/db_service.dart';
+import 'package:termora/features/database/data/db_transfer_service.dart';
+import 'package:termora/features/database/data/db_transfer_task_store.dart';
+import 'package:termora/features/database/domain/db_transfer_task.dart';
 import 'package:termora/features/database/domain/db_models.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
 
@@ -1186,4 +1189,100 @@ class DbVariablesController extends Notifier<Map<String, String>> {
 final dbVariablesProvider =
     NotifierProvider<DbVariablesController, Map<String, String>>(
       DbVariablesController.new,
+    );
+
+// ----------------------------------------------------------------------
+// 保存的传输任务(导出/导入/迁移 + ETL + 调度)
+// ----------------------------------------------------------------------
+
+class DbTransferTasksController extends Notifier<List<DbTransferTask>> {
+  @override
+  List<DbTransferTask> build() {
+    _load();
+    return const [];
+  }
+
+  Future<void> _load() async {
+    state = await DbTransferTaskStore.load();
+  }
+
+  Future<void> upsert(DbTransferTask task) async {
+    final index = state.indexWhere((t) => t.id == task.id);
+    state = index < 0
+        ? [...state, task]
+        : [
+            for (final t in state)
+              if (t.id == task.id) task else t,
+          ];
+    await DbTransferTaskStore.save(state);
+  }
+
+  Future<void> remove(String id) async {
+    state = [
+      for (final t in state)
+        if (t.id != id) t,
+    ];
+    await DbTransferTaskStore.save(state);
+  }
+
+  Future<void> recordRun(
+    String id, {
+    required bool ok,
+    required String message,
+    int? atMs,
+  }) async {
+    final at = atMs ?? DateTime.now().millisecondsSinceEpoch;
+    state = [
+      for (final t in state)
+        if (t.id == id)
+          t.copyWith(lastRunAtMs: at, lastRunOk: ok, lastRunMessage: message)
+        else
+          t,
+    ];
+    await DbTransferTaskStore.save(state);
+  }
+
+  /// 解析连接并执行任务;成功/失败都回写 lastRun。失败会 rethrow。
+  Future<DbTransferSummary> run(
+    DbTransferTask task, {
+    DbTransferOnProgress? onProgress,
+    DbTransferCancelled? isCancelled,
+  }) async {
+    final conns = ref.read(dbConnectionsProvider);
+    final source = conns.where((c) => c.id == task.sourceConnId).firstOrNull;
+    if (source == null) {
+      await recordRun(task.id, ok: false, message: '源连接不存在(可能已删除)');
+      throw StateError('源连接不存在(可能已删除)');
+    }
+    final target = task.targetConnId == null
+        ? null
+        : conns.where((c) => c.id == task.targetConnId).firstOrNull;
+    if (task.mode == DbTransferMode.migrate && target == null) {
+      await recordRun(task.id, ok: false, message: '目标连接不存在(可能已删除)');
+      throw StateError('目标连接不存在(可能已删除)');
+    }
+
+    try {
+      final summary = await DbTransferService.runTask(
+        task,
+        source: source,
+        target: target,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+      final message = task.mode == DbTransferMode.importScript
+          ? '已执行 ${summary.statements} 条语句'
+          : '${summary.tables} 张表 / ${summary.rows} 行';
+      await recordRun(task.id, ok: true, message: message);
+      return summary;
+    } catch (e) {
+      await recordRun(task.id, ok: false, message: '$e');
+      rethrow;
+    }
+  }
+}
+
+final dbTransferTasksProvider =
+    NotifierProvider<DbTransferTasksController, List<DbTransferTask>>(
+      DbTransferTasksController.new,
     );

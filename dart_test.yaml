@@ -1,5 +1,5 @@
 tags:
-  # 需要本地 55432 端口的临时 PostgreSQL 实例,手动运行:
+  # 需要本地临时数据库实例(PG 55432 / ClickHouse 8124,起法见各测试文件头),手动运行:
   #   flutter test --run-skipped --tags smoke
   smoke:
-    skip: "需要本地 55432 临时 PostgreSQL 实例(--run-skipped --tags smoke 手动运行)"
+    skip: "需要本地临时数据库实例(--run-skipped --tags smoke 手动运行,起法见测试文件头)"

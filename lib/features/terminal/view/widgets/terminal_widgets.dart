@@ -1025,6 +1025,8 @@ Future<bool> _showCloseTerminalConfirm(
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (dialogContext) => AlertDialog(
       backgroundColor: AppTheme.surfaceColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1708,6 +1710,8 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     if (del == null) return;
     final ok = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(node.isDir ? tr('删除目录') : tr('删除文件')),
         content: Text(
@@ -1756,6 +1760,8 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     final controller = TextEditingController(text: initial);
     return showDialog<String>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(title),
         content: TextField(
@@ -2612,6 +2618,8 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     final dirCount = nodes.where((n) => n.isDir).length;
     final ok = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(tr2('删除 {0} 项', [nodes.length])),
         content: Text(

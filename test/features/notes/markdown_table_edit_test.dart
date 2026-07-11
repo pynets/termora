@@ -17,6 +17,12 @@ void main() {
     ]);
   });
 
+  test('单元格里的换行转空格,不劈坏表格结构', () {
+    final next = MarkdownTableEdit.setCell(src, 0, 0, '两\n行\r\n值');
+    expect(next.split('\n')[2], '| 两 行 值 | 1 |');
+    expect(next.split('\n'), hasLength(4)); // 行数不变
+  });
+
   test('写单元格:表头与数据行;竖线转全角防破格', () {
     final next = MarkdownTableEdit.setCell(src, 0, 1, '99');
     expect(next.split('\n')[2], '| 甲 | 99 |');

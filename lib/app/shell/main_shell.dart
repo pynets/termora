@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/services/tray_service.dart';
+import 'package:termora/features/database/controller/db_schedule_controller.dart';
 import 'package:termora/core/services/workspace_store.dart';
 import 'package:termora/features/database/view/database_page.dart';
 import 'package:termora/features/notes/view/notes_page.dart';
@@ -13,6 +14,7 @@ import 'package:termora/features/remote/view/remote_page.dart';
 import 'package:termora/features/settings/controller/app_update_controller.dart';
 import 'package:termora/features/settings/controller/setting_providers.dart';
 import 'package:termora/features/settings/view/settings_dialog.dart';
+import 'package:termora/features/settings/view/update_dialog.dart';
 import 'package:termora/features/terminal/view/terminal_page.dart';
 
 /// 主界面外壳 — 左侧 NavigationRail 导航
@@ -28,6 +30,7 @@ class _MainShellState extends ConsumerState<MainShell> {
   static const _updateCheckInterval = Duration(hours: 3);
 
   int _selectedIndex = 0;
+  final _contentNavigatorKey = GlobalKey<NavigatorState>();
   late final Timer _updateCheckTimer;
 
   @override
@@ -64,6 +67,40 @@ class _MainShellState extends ConsumerState<MainShell> {
     WorkspaceStore.saveActiveFeature(index);
   }
 
+  /// 手动检查更新:静默检查,已是最新给轻提示,发现新版本才弹更新小弹窗
+  Future<void> _checkUpdateManually() async {
+    final l10n = AppL10n.current;
+    final messenger = ScaffoldMessenger.of(context);
+    final notifier = ref.read(appUpdateControllerProvider.notifier);
+    var state = ref.read(appUpdateControllerProvider);
+
+    // 已经发现过新版本(启动/定时检查的结果),直接弹窗,不重复请求
+    if (state.update == null) {
+      if (state.isBusy) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(l10n.checkingForUpdates),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+      await notifier.checkForUpdate();
+      messenger.hideCurrentSnackBar();
+      if (!mounted) return;
+      state = ref.read(appUpdateControllerProvider);
+    }
+
+    if (state.update != null) {
+      await showUpdateDialog(_contentNavigatorKey.currentContext ?? context);
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(l10n.upToDate),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // 监听主题/品牌色/多语言变化,保证侧栏配色即时刷新
@@ -74,6 +111,9 @@ class _MainShellState extends ConsumerState<MainShell> {
     final l10n = AppL10n.resolve(locale);
     AppL10n.current = l10n;
 
+    // 常驻传输任务调度器(watch 一次即启动,随会话存活)
+    ref.watch(dbScheduleControllerProvider);
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       body: Row(
@@ -81,15 +121,23 @@ class _MainShellState extends ConsumerState<MainShell> {
           _buildRail(l10n, updateState),
           VerticalDivider(width: 0.5, color: AppTheme.borderColor),
           Expanded(
-            child: IndexedStack(
-              index: _selectedIndex,
-              // ignore: prefer_const_constructors
-              children: [
-                TerminalPage(),
-                RemotePage(),
-                DatabasePage(),
-                NotesPage(),
+            child: Navigator(
+              key: _contentNavigatorKey,
+              pages: [
+                MaterialPage(
+                  key: const ValueKey('main_shell_content'),
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: const [
+                      _FeatureHost(child: TerminalPage()),
+                      _FeatureHost(child: RemotePage()),
+                      _FeatureHost(child: DatabasePage()),
+                      _FeatureHost(child: NotesPage()),
+                    ],
+                  ),
+                ),
               ],
+              onDidRemovePage: (page) {},
             ),
           ),
         ],
@@ -148,7 +196,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                           ? AppTheme.subtleTextColor
                           : AppTheme.brandColor,
                     ),
-                    onPressed: () => showSettingsDialog(context),
+                    onPressed: _checkUpdateManually,
                   ),
                   IconButton(
                     tooltip: l10n.settings,
@@ -157,7 +205,9 @@ class _MainShellState extends ConsumerState<MainShell> {
                       size: 18,
                       color: AppTheme.subtleTextColor,
                     ),
-                    onPressed: () => showSettingsDialog(context),
+                    onPressed: () => showSettingsDialog(
+                      _contentNavigatorKey.currentContext ?? context,
+                    ),
                   ),
                 ],
               ),
@@ -168,6 +218,30 @@ class _MainShellState extends ConsumerState<MainShell> {
           for (final d in destinations)
             NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)),
         ],
+      ),
+    );
+  }
+}
+
+/// 每个功能页包一层独立 Navigator —— 该页弹出的对话框(useRootNavigator: false)
+/// 会挂在自己这层 Navigator 上,于是:
+/// ① 遮罩只覆盖内容区,不盖左侧导航栏;
+/// ② 切到别的功能页时,对话框随 IndexedStack 一起隐藏(不再悬浮残留到别的页);
+/// ③ 切回本页时对话框依旧在(IndexedStack 保活整棵子树 + 路由状态)。
+class _FeatureHost extends StatelessWidget {
+  const _FeatureHost({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Navigator(
+      // 单一根路由 = 功能页本身;无进出场动画(它不是被“推入”的页面)。
+      onGenerateRoute: (settings) => PageRouteBuilder(
+        settings: settings,
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (context, animation, secondaryAnimation) => child,
       ),
     );
   }

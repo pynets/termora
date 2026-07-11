@@ -55,9 +55,14 @@ class NoteAssetStore {
     return dest;
   }
 
+  /// 测试注入:替代真实的剪贴板图片探测(免得测试跑 osascript 读真剪贴板)
+  static Future<String?> Function()? debugClipboardImageOverride;
+
   /// 读系统剪贴板里的图片并落盘;剪贴板无图片返回 null。
   /// macOS 用 osascript 取 PNG(免原生通道);其他平台暂不支持。
   static Future<String?> saveClipboardImage() async {
+    final override = debugClipboardImageOverride;
+    if (override != null) return override();
     if (!Platform.isMacOS) return null;
     final dir = await _assetsDir();
     final dest = p.join(dir.path, _uniqueName('.png'));

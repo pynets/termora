@@ -13,6 +13,7 @@ import 'package:termora/core/widgets/glass_menu.dart';
 import 'package:termora/features/database/controller/database_providers.dart';
 import 'package:termora/features/database/data/connection_store.dart';
 import 'package:termora/features/database/domain/db_models.dart';
+import 'package:termora/features/database/domain/db_transfer_task.dart';
 import 'package:termora/features/database/domain/sql_variables.dart';
 import 'package:termora/features/database/view/widgets/column_filter_popup.dart';
 import 'package:termora/features/database/view/widgets/connection_dialog.dart';
@@ -21,6 +22,7 @@ import 'package:termora/features/database/view/widgets/export_dialog.dart';
 import 'package:termora/features/database/view/widgets/sql_editor.dart';
 import 'package:termora/features/database/view/widgets/table_structure_view.dart';
 import 'package:termora/features/database/view/widgets/transfer_dialog.dart';
+import 'package:termora/features/database/view/widgets/transfer_tasks_dialog.dart';
 import 'package:termora/features/database/view/widgets/variables_dialog.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
 
@@ -152,6 +154,7 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                   ),
                 ),
                 const Spacer(),
+                const _TasksButton(),
                 IconButton(
                   tooltip: tr('新建连接'),
                   visualDensity: VisualDensity.compact,
@@ -376,6 +379,7 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
       ('export', tr('导出 SQL 脚本'), LucideIcons.fileDown),
       ('import', tr('导入 SQL 脚本'), LucideIcons.fileUp),
       ('migrate', tr('迁移到其它连接'), LucideIcons.arrowRightLeft),
+      ('backup', tr('备份整库'), LucideIcons.databaseBackup),
       ('edit', tr('编辑连接'), LucideIcons.pencilLine),
       ('delete', tr('删除连接'), LucideIcons.trash2),
     ]).then((action) async {
@@ -407,6 +411,13 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
             context,
             source: config,
             mode: DbTransferMode.migrate,
+          );
+        case 'backup':
+          showTransferDialog(
+            context,
+            source: config,
+            mode: DbTransferMode.export,
+            presetWholeDatabase: true,
           );
         case 'edit':
           _editConnection(config);
@@ -1633,5 +1644,30 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
     final config = await showConnectionDialog(context, existing: existing);
     if (config == null) return;
     await ref.read(dbConnectionsProvider.notifier).upsert(config);
+  }
+}
+
+/// 侧栏头部「传输任务」入口(带任务数徽标)
+class _TasksButton extends ConsumerWidget {
+  const _TasksButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(dbTransferTasksProvider).length;
+    return IconButton(
+      tooltip: tr('传输任务'),
+      visualDensity: VisualDensity.compact,
+      icon: Badge(
+        isLabelVisible: count > 0,
+        label: Text('$count'),
+        backgroundColor: AppTheme.brandColor,
+        child: Icon(
+          LucideIcons.listChecks,
+          size: 16,
+          color: AppTheme.subtleTextColor,
+        ),
+      ),
+      onPressed: () => showTransferTasksDialog(context),
+    );
   }
 }

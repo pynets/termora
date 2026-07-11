@@ -58,6 +58,8 @@ dependencies:
   postgres: ^3.5.12
   # SQLite 本地库文件(macOS 直接用系统 libsqlite3)
   sqlite3: ^3.3.3
+  # ETL 哈希脱敏(sha256)
+  crypto: ^3.0.6
   re_editor: ^0.9.0
   re_highlight: ^0.0.3
   http: ^1.6.0

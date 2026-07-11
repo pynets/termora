@@ -196,9 +196,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final pw = _elevPassword;
     if (pw != null) {
       if (_elevSu) {
-        return Future.error(
-          SftpException(tr('su 提权暂不支持上传,请以 root 登录或用 sudo')),
-        );
+        return Future.error(SftpException(tr('su 提权暂不支持上传,请以 root 登录或用 sudo')));
       }
       final name = localPath.split('/').where((s) => s.isNotEmpty).last;
       return SudoFileService.startUploadFile(
@@ -218,11 +216,14 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final pw = _elevPassword;
     if (pw != null) {
       if (_elevSu) {
-        return Future.error(
-          SftpException(tr('su 提权暂不支持上传,请以 root 登录或用 sudo')),
-        );
+        return Future.error(SftpException(tr('su 提权暂不支持上传,请以 root 登录或用 sudo')));
       }
-      return SudoFileService.startUploadDir(widget.host, pw, localDir, remoteDir);
+      return SudoFileService.startUploadDir(
+        widget.host,
+        pw,
+        localDir,
+        remoteDir,
+      );
     }
     return SftpService.startUploadDir(widget.host, localDir, remoteDir);
   }
@@ -306,6 +307,8 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final controller = TextEditingController();
     return showDialog<({bool su, String password})>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
           shape: RoundedRectangleBorder(
@@ -378,8 +381,9 @@ class _SftpBrowserState extends State<SftpBrowser> {
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
-              onPressed: () => Navigator.of(context)
-                  .pop((su: su, password: controller.text)),
+              onPressed: () => Navigator.of(
+                context,
+              ).pop((su: su, password: controller.text)),
               child: Text(tr('提权')),
             ),
           ],
@@ -466,8 +470,9 @@ class _SftpBrowserState extends State<SftpBrowser> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color:
-                    selected ? AppTheme.headingColor : AppTheme.subtleTextColor,
+                color: selected
+                    ? AppTheme.headingColor
+                    : AppTheme.subtleTextColor,
               ),
             ),
           ],
@@ -520,17 +525,19 @@ class _SftpBrowserState extends State<SftpBrowser> {
       if (!mounted || records.isEmpty) return;
       setState(() {
         for (final r in records) {
-          final t = _Transfer(
-            label: r.label,
-            isUpload: r.isUpload,
-            remoteDir: '',
-            total: r.total,
-          )..state = switch (r.state) {
-              'done' => _TransferState.done,
-              'cancelled' => _TransferState.cancelled,
-              _ => _TransferState.failed,
-            }
-            ..error = r.error;
+          final t =
+              _Transfer(
+                  label: r.label,
+                  isUpload: r.isUpload,
+                  remoteDir: '',
+                  total: r.total,
+                )
+                ..state = switch (r.state) {
+                  'done' => _TransferState.done,
+                  'cancelled' => _TransferState.cancelled,
+                  _ => _TransferState.failed,
+                }
+                ..error = r.error;
           if (t.state == _TransferState.done && r.total != null) {
             t.transferred = r.total!;
           }
@@ -768,8 +775,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
     });
   }
 
-  String _join(String dir, String name) =>
-      dir == '/' ? '/$name' : '$dir/$name';
+  String _join(String dir, String name) => dir == '/' ? '/$name' : '$dir/$name';
 
   String _parentOf(String path) {
     final index = path.lastIndexOf('/');
@@ -838,8 +844,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
     } on SftpException catch (error) {
       transfer.poll?.cancel();
       if (!mounted) return;
-      final denied =
-          !_elevated && error.message.contains('Permission denied');
+      final denied = !_elevated && error.message.contains('Permission denied');
       setState(() {
         transfer.state = _TransferState.failed;
         transfer.error = error.message;
@@ -940,8 +945,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
     SftpEntry entry, {
     required String localDir,
     required String targetDir,
-  }) =>
-      _uploadLocalPath(_join(localDir, entry.name), targetDir: targetDir);
+  }) => _uploadLocalPath(_join(localDir, entry.name), targetDir: targetDir);
 
   /// 上传任意本地路径(文件或目录)到远端目录 — 应用内拖拽与
   /// Finder 拖入共用的底座
@@ -958,10 +962,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
         remoteDir: targetDir,
       );
       unawaited(
-        _beginTransfer(
-          transfer,
-          () => _startUploadDir(localPath, targetDir),
-        ),
+        _beginTransfer(transfer, () => _startUploadDir(localPath, targetDir)),
       );
       return;
     }
@@ -1095,10 +1096,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
       remoteDir: _remotePath,
     );
     unawaited(
-      _beginTransfer(
-        transfer,
-        () => _startUploadDir(localDir, _remotePath),
-      ),
+      _beginTransfer(transfer, () => _startUploadDir(localDir, _remotePath)),
     );
   }
 
@@ -1235,6 +1233,8 @@ class _SftpBrowserState extends State<SftpBrowser> {
   Future<bool> _confirmDelete(SftpEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(entry.isDir ? tr('删除目录') : tr('删除文件')),
         content: Text(
@@ -1268,6 +1268,8 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final controller = TextEditingController(text: initial);
     return showDialog<String>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(title),
         content: TextField(
@@ -1295,9 +1297,9 @@ class _SftpBrowserState extends State<SftpBrowser> {
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppTheme.brandColor),
-            onPressed: () => Navigator.of(context).pop(
-              obscure ? controller.text : controller.text.trim(),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).pop(obscure ? controller.text : controller.text.trim()),
             child: Text(confirm),
           ),
         ],
@@ -1437,17 +1439,17 @@ class _SftpBrowserState extends State<SftpBrowser> {
 
   /// 右键行时的选择整理(Finder 心智):右键未选中的行 → 选择切到该行;
   /// 右键已选中的行且选了多项 → 视为对整个选择集操作(返回 true)。
-  bool _prepareContextSelection(SlideSelectController<String> select, String name) {
+  bool _prepareContextSelection(
+    SlideSelectController<String> select,
+    String name,
+  ) {
     if (select.contains(name) && select.selected.length > 1) return true;
     select.replaceWith(name);
     return false;
   }
 
   /// 多选批量菜单(远端/本地通用骨架)
-  Future<void> _showMultiMenu(
-    Offset position, {
-    required bool isRemote,
-  }) async {
+  Future<void> _showMultiMenu(Offset position, {required bool isRemote}) async {
     final entries = _selectedEntries(isRemote: isRemote);
     final count = entries.length;
     final action = await _showContextMenu<String>(position, [
@@ -1499,7 +1501,12 @@ class _SftpBrowserState extends State<SftpBrowser> {
       _menuItem('rename', LucideIcons.penLine300, tr('重命名')),
       _menuItem('copyPath', LucideIcons.copy300, tr('复制远端路径')),
       const PopupMenuDivider(),
-      _menuItem('delete', LucideIcons.trash300, tr('删除'), color: AppTheme.errorColor),
+      _menuItem(
+        'delete',
+        LucideIcons.trash300,
+        tr('删除'),
+        color: AppTheme.errorColor,
+      ),
     ]);
     if (!mounted || action == null) return;
     switch (action) {
@@ -1573,7 +1580,12 @@ class _SftpBrowserState extends State<SftpBrowser> {
       _menuItem('copyPath', LucideIcons.copy300, tr('复制路径')),
       _menuItem('reveal', LucideIcons.eye300, tr('在 Finder 中显示')),
       const PopupMenuDivider(),
-      _menuItem('delete', LucideIcons.trash300, tr('删除'), color: AppTheme.errorColor),
+      _menuItem(
+        'delete',
+        LucideIcons.trash300,
+        tr('删除'),
+        color: AppTheme.errorColor,
+      ),
     ]);
     if (!mounted || action == null) return;
     switch (action) {
@@ -1745,7 +1757,11 @@ class _SftpBrowserState extends State<SftpBrowser> {
     for (final entry in entries) {
       if (isRemote) {
         unawaited(
-          _downloadToLocal(entry, remoteDir: _remotePath, targetDir: _localPath),
+          _downloadToLocal(
+            entry,
+            remoteDir: _remotePath,
+            targetDir: _localPath,
+          ),
         );
       } else {
         unawaited(
@@ -1763,6 +1779,8 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final dirCount = entries.where((e) => e.isDir).length;
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(tr2('删除 {0} 项', [entries.length])),
         content: Text(
@@ -1894,7 +1912,11 @@ class _SftpBrowserState extends State<SftpBrowser> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                Icon(LucideIcons.folder300, size: 15, color: AppTheme.brandColor),
+                Icon(
+                  LucideIcons.folder300,
+                  size: 15,
+                  color: AppTheme.brandColor,
+                ),
                 const SizedBox(width: 6),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 160),
@@ -1970,7 +1992,9 @@ class _SftpBrowserState extends State<SftpBrowser> {
                 ),
                 _headerAction(
                   _remoteShowHidden ? tr('隐藏 . 开头文件') : tr('显示 . 开头文件'),
-                  _remoteShowHidden ? LucideIcons.eyeOff300 : LucideIcons.eye300,
+                  _remoteShowHidden
+                      ? LucideIcons.eyeOff300
+                      : LucideIcons.eye300,
                   () => setState(() => _remoteShowHidden = !_remoteShowHidden),
                 ),
                 if (!_elevated)
@@ -2050,8 +2074,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
 
   Widget _buildPaneDragTarget({required bool isRemote}) {
     return DragTarget<_DragPayload>(
-      onWillAcceptWithDetails: (details) =>
-          details.data.fromRemote != isRemote,
+      onWillAcceptWithDetails: (details) => details.data.fromRemote != isRemote,
       onAcceptWithDetails: (details) {
         final p = details.data;
         if (isRemote) {
@@ -2065,8 +2088,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
         }
       },
       builder: (context, candidates, rejected) {
-        final active =
-            candidates.isNotEmpty || (isRemote && _osDropActive);
+        final active = candidates.isNotEmpty || (isRemote && _osDropActive);
         return Container(
           decoration: active
               ? BoxDecoration(
@@ -2196,56 +2218,51 @@ class _SftpBrowserState extends State<SftpBrowser> {
     required bool selected,
   }) {
     return _EntryRow(
-          entry: entry,
-          selected: selected,
-          payload: _DragPayload(fromRemote: isRemote, entry: entry, dir: dir),
-          onOpen: entry.isDir
-              ? () => isRemote
-                    ? _navigateRemote(_join(dir, entry.name))
-                    : _navigateLocal(_join(dir, entry.name))
-              : isRemote
-              ? null
-              : () => _openLocally(_join(dir, entry.name)),
-          transferTooltip: isRemote ? tr('下载到本地栏') : tr('上传到远端栏'),
-          transferIcon: isRemote
-              ? LucideIcons.download300
-              : LucideIcons.upload300,
-          onTransfer: () => isRemote
-              ? _downloadToLocal(entry, remoteDir: dir, targetDir: _localPath)
-              : _uploadFromLocal(entry, localDir: dir, targetDir: _remotePath),
-          onRename: () => isRemote ? _renameRemote(entry) : _renameLocal(entry),
-          onDelete: () => isRemote ? _deleteRemote(entry) : _deleteLocal(entry),
-          onContextMenu: (position) => isRemote
-              ? _showRemoteEntryMenu(position, entry)
-              : _showLocalEntryMenu(position, entry),
-          onAcceptDrop: entry.isDir
-              ? (p) {
-                  final target = _join(dir, entry.name);
-                  if (isRemote) {
-                    unawaited(
-                      _uploadFromLocal(
-                        p.entry,
-                        localDir: p.dir,
-                        targetDir: target,
-                      ),
-                    );
-                  } else {
-                    unawaited(
-                      _downloadToLocal(
-                        p.entry,
-                        remoteDir: p.dir,
-                        targetDir: target,
-                      ),
-                    );
-                  }
-                }
-              : null,
+      entry: entry,
+      selected: selected,
+      payload: _DragPayload(fromRemote: isRemote, entry: entry, dir: dir),
+      onOpen: entry.isDir
+          ? () => isRemote
+                ? _navigateRemote(_join(dir, entry.name))
+                : _navigateLocal(_join(dir, entry.name))
+          : isRemote
+          ? null
+          : () => _openLocally(_join(dir, entry.name)),
+      transferTooltip: isRemote ? tr('下载到本地栏') : tr('上传到远端栏'),
+      transferIcon: isRemote ? LucideIcons.download300 : LucideIcons.upload300,
+      onTransfer: () => isRemote
+          ? _downloadToLocal(entry, remoteDir: dir, targetDir: _localPath)
+          : _uploadFromLocal(entry, localDir: dir, targetDir: _remotePath),
+      onRename: () => isRemote ? _renameRemote(entry) : _renameLocal(entry),
+      onDelete: () => isRemote ? _deleteRemote(entry) : _deleteLocal(entry),
+      onContextMenu: (position) => isRemote
+          ? _showRemoteEntryMenu(position, entry)
+          : _showLocalEntryMenu(position, entry),
+      onAcceptDrop: entry.isDir
+          ? (p) {
+              final target = _join(dir, entry.name);
+              if (isRemote) {
+                unawaited(
+                  _uploadFromLocal(p.entry, localDir: p.dir, targetDir: target),
+                );
+              } else {
+                unawaited(
+                  _downloadToLocal(
+                    p.entry,
+                    remoteDir: p.dir,
+                    targetDir: target,
+                  ),
+                );
+              }
+            }
+          : null,
     );
   }
 
   Widget _buildTransfersPanel() {
-    final running =
-        _transfers.where((t) => t.state == _TransferState.running).length;
+    final running = _transfers
+        .where((t) => t.state == _TransferState.running)
+        .length;
     return Container(
       constraints: const BoxConstraints(maxHeight: 168),
       decoration: BoxDecoration(
@@ -2318,9 +2335,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
       child: Row(
         children: [
           Icon(
-            transfer.isUpload
-                ? LucideIcons.upload300
-                : LucideIcons.download300,
+            transfer.isUpload ? LucideIcons.upload300 : LucideIcons.download300,
             size: 12,
             color: stateColor,
           ),
@@ -2410,7 +2425,9 @@ class _SftpBrowserState extends State<SftpBrowser> {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 11,
-          color: _statusIsError ? AppTheme.errorColor : AppTheme.subtleTextColor,
+          color: _statusIsError
+              ? AppTheme.errorColor
+              : AppTheme.subtleTextColor,
         ),
       ),
     );
@@ -2546,7 +2563,11 @@ class _EntryRowState extends State<_EntryRow> {
                       widget.onTransfer,
                       color: AppTheme.brandColor,
                     ),
-                    _rowAction(tr('重命名'), LucideIcons.penLine300, widget.onRename),
+                    _rowAction(
+                      tr('重命名'),
+                      LucideIcons.penLine300,
+                      widget.onRename,
+                    ),
                     _rowAction(
                       tr('删除'),
                       LucideIcons.trash300,
@@ -2603,9 +2624,7 @@ class _EntryRowState extends State<_EntryRow> {
         decoration: BoxDecoration(
           color: AppTheme.surfaceColor.withValues(alpha: 0.95),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: AppTheme.brandColor.withValues(alpha: 0.6),
-          ),
+          border: Border.all(color: AppTheme.brandColor.withValues(alpha: 0.6)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.25),
@@ -2624,10 +2643,7 @@ class _EntryRowState extends State<_EntryRow> {
                 entry.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: AppTheme.headingColor,
-                ),
+                style: TextStyle(fontSize: 12.5, color: AppTheme.headingColor),
               ),
             ),
           ],

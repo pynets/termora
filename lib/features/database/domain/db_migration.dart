@@ -41,7 +41,7 @@ class DbMigrationColumn {
     return DbMigrationColumn(
       name: info.name,
       sourceType: info.dataType,
-      generic: mapToGeneric(source, info.dataType),
+      generic: DbMigration.mapToGeneric(source, info.dataType),
       nullable: info.nullable,
       isPrimaryKey: info.isPrimaryKey,
     );
@@ -198,6 +198,22 @@ class DbMigration {
     _ => '"${name.replaceAll('"', '""')}"',
   };
 
+  /// 表名(可选 schema 前缀)。[schema] 为 null → 落到目标默认库/schema。
+  static String qualified(DbEngine target, String? schema, String table) =>
+      schema == null
+      ? ident(target, table)
+      : '${ident(target, schema)}.${ident(target, table)}';
+
+  /// 建 schema/库 语句(整库迁移保留源 schema 时用);
+  /// 目标为 SQLite 无 schema 概念 → 返回 null。
+  static String? buildCreateSchema(DbEngine target, String schema) =>
+      switch (target) {
+        DbEngine.postgres => 'CREATE SCHEMA IF NOT EXISTS ${ident(target, schema)}',
+        DbEngine.clickhouse =>
+          'CREATE DATABASE IF NOT EXISTS ${ident(target, schema)}',
+        DbEngine.sqlite => null,
+      };
+
   /// 值 → 目标引擎的 SQL 字面量
   static String literal(DbEngine target, Object? value) {
     if (value == null) return 'NULL';
@@ -250,7 +266,8 @@ class DbMigration {
 
   // ══════════════ DDL / INSERT 生成 ══════════════
 
-  /// 建表语句(不带 schema 前缀 — 落到目标连接的默认库/schema)。
+  /// 建表语句。[schema] 为 null → 落到目标默认库/schema(单 schema 迁移);
+  /// 非 null → 生成带 schema 前缀的限定名(整库迁移保留源 schema)。
   /// [drop] 为 true 时先输出 DROP TABLE IF EXISTS(覆盖式迁移)。
   static List<String> buildCreateTable(
     DbEngine source,
@@ -258,8 +275,9 @@ class DbMigration {
     String table,
     List<DbMigrationColumn> columns, {
     bool drop = true,
+    String? schema,
   }) {
-    final t = ident(target, table);
+    final t = qualified(target, schema, table);
     final pk = [
       for (final c in columns)
         if (c.isPrimaryKey) c,
@@ -269,8 +287,12 @@ class DbMigration {
     for (final c in columns) {
       final type = targetColumnType(source, target, c);
       if (target == DbEngine.clickhouse) {
-        // CH 用 Nullable() 包装表达可空;主键列(排序键)不允许 Nullable
-        final wrapped = (c.nullable && !c.isPrimaryKey)
+        // CH 用 Nullable() 包装表达可空;主键列(排序键)不允许 Nullable。
+        // 同引擎迁移时原始类型可能已带 Nullable(...),不能再包一层。
+        final wrapped =
+            (c.nullable &&
+                !c.isPrimaryKey &&
+                !type.startsWith('Nullable('))
             ? 'Nullable($type)'
             : type;
         defs.add('  ${ident(target, c.name)} $wrapped');
@@ -301,18 +323,19 @@ class DbMigration {
     ];
   }
 
-  /// 一批行 → 一条多行 INSERT
+  /// 一批行 → 一条多行 INSERT。[schema] 非 null 时用限定名。
   static String buildInsert(
     DbEngine target,
     String table,
     List<String> columns,
-    List<List<Object?>> rows,
-  ) {
+    List<List<Object?>> rows, {
+    String? schema,
+  }) {
     final cols = columns.map((c) => ident(target, c)).join(', ');
     final values = [
       for (final row in rows)
         '(${row.map((v) => literal(target, v)).join(', ')})',
     ].join(',\n');
-    return 'INSERT INTO ${ident(target, table)} ($cols) VALUES\n$values';
+    return 'INSERT INTO ${qualified(target, schema, table)} ($cols) VALUES\n$values';
   }
 }

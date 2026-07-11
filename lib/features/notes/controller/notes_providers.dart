@@ -5,6 +5,10 @@ import 'package:termora/features/notes/data/note_search_index.dart';
 import 'package:termora/features/notes/data/note_store.dart';
 import 'package:termora/features/notes/domain/note.dart';
 
+/// 列表排序方式。title = 名称的数字自然序("第2章" < "第10章"),默认;
+/// updated/created = 时间倒序。置顶永远在最前。
+enum NoteSortMode { title, updated, created }
+
 class NotesState {
   const NotesState({
     this.notes = const [],
@@ -12,6 +16,7 @@ class NotesState {
     this.activeNotebookId,
     this.selectedId,
     this.query = '',
+    this.sortMode = NoteSortMode.title,
     this.loaded = false,
   });
 
@@ -27,6 +32,9 @@ class NotesState {
 
   /// 列表搜索关键字(标题+正文包含匹配)
   final String query;
+
+  /// 列表排序方式(持久化)
+  final NoteSortMode sortMode;
 
   /// 首次磁盘加载是否完成(避免启动瞬间闪"空空如也")
   final bool loaded;
@@ -57,7 +65,11 @@ class NotesState {
     ];
     list.sort((a, b) {
       if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-      return b.updatedAt.compareTo(a.updatedAt);
+      return switch (sortMode) {
+        NoteSortMode.title => Note.naturalCompare(a.title, b.title),
+        NoteSortMode.updated => b.updatedAt.compareTo(a.updatedAt),
+        NoteSortMode.created => b.createdAt.compareTo(a.createdAt),
+      };
     });
     return list;
   }
@@ -73,6 +85,7 @@ class NotesState {
     String? activeNotebookId,
     String? selectedId,
     String? query,
+    NoteSortMode? sortMode,
     bool? loaded,
     bool clearSelection = false,
     bool clearActiveNotebook = false,
@@ -85,6 +98,7 @@ class NotesState {
           : (activeNotebookId ?? this.activeNotebookId),
       selectedId: clearSelection ? null : (selectedId ?? this.selectedId),
       query: query ?? this.query,
+      sortMode: sortMode ?? this.sortMode,
       loaded: loaded ?? this.loaded,
     );
   }
@@ -108,6 +122,7 @@ class NotesController extends Notifier<NotesState> {
     final notebooks = await NoteStore.loadNotebooks();
     final lastId = await NoteStore.loadSelectedId();
     final lastNotebook = await NoteStore.loadActiveNotebook();
+    final sortIndex = await NoteStore.loadSortMode();
     final selected = notes.any((n) => n.id == lastId)
         ? lastId
         : (notes.isEmpty
@@ -124,8 +139,17 @@ class NotesController extends Notifier<NotesState> {
           ? lastNotebook
           : null,
       selectedId: selected,
+      sortMode: NoteSortMode
+          .values[sortIndex.clamp(0, NoteSortMode.values.length - 1)],
       loaded: true,
     );
+  }
+
+  /// 切换列表排序方式并持久化
+  void setSortMode(NoteSortMode mode) {
+    if (state.sortMode == mode) return;
+    state = state.copyWith(sortMode: mode);
+    NoteStore.saveSortMode(mode.index);
   }
 
   /// 新建一条空白笔记并选中(归入当前查看的笔记本),返回其 id

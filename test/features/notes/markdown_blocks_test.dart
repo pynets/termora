@@ -45,6 +45,18 @@ void main() {
       expect(MarkdownBlockSplitter.split(''), isEmpty);
       expect(MarkdownBlockSplitter.split('\n\n  \n'), isEmpty);
     });
+
+    test('含 CRLF 的源码区间不错位(不做暗中归一,替换块不啃字)', () {
+      // 换行归一由文本入口负责;拆分器必须按原始串切区间
+      const src = '甲\r\n\r\n乙\r\n丙';
+      final blocks = MarkdownBlockSplitter.split(src);
+      for (final b in blocks) {
+        expect(src.substring(b.start, b.end), b.source);
+      }
+      final next = MarkdownBlockSplitter.replaceBlock(src, blocks.last, '改');
+      expect(next, contains('改'));
+      expect(next, contains('甲')); // 前块完好
+    });
   });
 
   group('replaceBlock / appendBlock', () {

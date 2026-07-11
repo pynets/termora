@@ -52,6 +52,9 @@ class AppL10n {
   String get database => isZh ? '数据库' : 'Database';
   String get notes => isZh ? '笔记' : 'Notes';
   String get settings => isZh ? '设置' : 'Settings';
+  String get settingsGeneral => isZh ? '通用' : 'General';
+  String get settingsAppearance => isZh ? '外观' : 'Appearance';
+  String get settingsAbout => isZh ? '关于' : 'About';
 
   // Settings Dialog
   String get close => isZh ? '关闭' : 'Close';
@@ -103,4 +106,5 @@ class AppL10n {
   String get updateFailed =>
       isZh ? '更新失败，请重试' : 'Update failed. Please try again.';
   String get viewRelease => isZh ? '查看发布页' : 'View Release';
+  String get later => isZh ? '稍后' : 'Later';
 }

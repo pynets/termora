@@ -7,8 +7,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart'
-    show RenderMetaData, RendererBinding;
+import 'package:flutter/rendering.dart' show RenderMetaData, RendererBinding;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -1269,8 +1268,8 @@ class _MinimapPainter extends CustomPainter {
       final totalExtent = p.maxScrollExtent + p.viewportDimension;
       if (totalExtent > 0) {
         final top = (p.pixels / totalExtent).clamp(0.0, 1.0) * size.height;
-        final h = (p.viewportDimension / totalExtent).clamp(0.0, 1.0) *
-            size.height;
+        final h =
+            (p.viewportDimension / totalExtent).clamp(0.0, 1.0) * size.height;
         final rect = Rect.fromLTWH(0.5, top, size.width - 1, math.max(6, h));
         canvas.drawRect(rect, Paint()..color = viewportColor);
         canvas.drawRect(
@@ -1487,25 +1486,22 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   void _noteBlinkContent() {
     if (_anyBlinkSeen) return;
     _anyBlinkSeen = true;
-    _blinkTimer ??= Timer.periodic(
-      const Duration(milliseconds: 530),
-      (_) {
-        if (!mounted) return;
-        if (!_bufferHasBlinkContent()) {
-          _blinkTimer?.cancel();
-          _blinkTimer = null;
-          _anyBlinkSeen = false;
-          // 相位归位为亮,避免残留半透明
-          if (!_blinkPhaseOn) {
-            _blinkPhaseOn = true;
-            _terminalOutputVersion.value++;
-          }
-          return;
+    _blinkTimer ??= Timer.periodic(const Duration(milliseconds: 530), (_) {
+      if (!mounted) return;
+      if (!_bufferHasBlinkContent()) {
+        _blinkTimer?.cancel();
+        _blinkTimer = null;
+        _anyBlinkSeen = false;
+        // 相位归位为亮,避免残留半透明
+        if (!_blinkPhaseOn) {
+          _blinkPhaseOn = true;
+          _terminalOutputVersion.value++;
         }
-        _blinkPhaseOn = !_blinkPhaseOn;
-        _terminalOutputVersion.value++;
-      },
-    );
+        return;
+      }
+      _blinkPhaseOn = !_blinkPhaseOn;
+      _terminalOutputVersion.value++;
+    });
   }
 
   /// 当前缓冲区(含备用屏身后保存的普通缓冲区)是否还有闪烁文字。
@@ -1856,7 +1852,9 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   void _appendExitLine(int exitCode) {
     if (_isRemoteSession) {
       _appendLine(
-        exitCode == 0 ? tr('连接已断开。按回车重新连接。') : tr2('连接已断开(状态码 {0})。按回车重新连接。', [exitCode]),
+        exitCode == 0
+            ? tr('连接已断开。按回车重新连接。')
+            : tr2('连接已断开(状态码 {0})。按回车重新连接。', [exitCode]),
         exitCode == 0 ? TerminalLineType.system : TerminalLineType.stderr,
       );
       return;
@@ -1985,7 +1983,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       _nativePtyUnavailable = true;
       _publishUiState();
       if (mounted && commandSessionId == _sessionId) {
-        _appendLine(tr2('PTY 启动失败，已回退到普通进程: {0}', [error]), TerminalLineType.stderr);
+        _appendLine(
+          tr2('PTY 启动失败，已回退到普通进程: {0}', [error]),
+          TerminalLineType.stderr,
+        );
       }
       return false;
     }
@@ -2427,7 +2428,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         await MacosFileAccessService.persistAccess(selectedPath);
       }
       if (!await _canRunInDirectory(selectedPath)) {
-        _appendLine(tr2('目录仍不可访问: {0}', [selectedPath]), TerminalLineType.stderr);
+        _appendLine(
+          tr2('目录仍不可访问: {0}', [selectedPath]),
+          TerminalLineType.stderr,
+        );
         return;
       }
       FilePickerHelper.updateLastDirectoryFromPath(selectedPath);
@@ -2489,7 +2493,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         TerminalLineType.system,
       );
     } else {
-      _appendLine(tr2('请点击左下角“+”后选择应用: {0}', [appPath]), TerminalLineType.system);
+      _appendLine(
+        tr2('请点击左下角“+”后选择应用: {0}', [appPath]),
+        TerminalLineType.system,
+      );
     }
   }
 
@@ -2937,7 +2944,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                     s.name.isEmpty ? s.command : s.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.headingColor,
+                    ),
                   ),
                 ),
               ],
@@ -2951,7 +2961,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
             children: [
               Icon(LucideIcons.plus300, size: 13, color: AppTheme.brandColor),
               const SizedBox(width: 8),
-              Text(tr('新建片段…'), style: TextStyle(fontSize: 13, color: AppTheme.brandColor)),
+              Text(
+                tr('新建片段…'),
+                style: TextStyle(fontSize: 13, color: AppTheme.brandColor),
+              ),
             ],
           ),
         ),
@@ -2966,7 +2979,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                 color: AppTheme.subtleTextColor,
               ),
               const SizedBox(width: 8),
-              Text(tr('管理片段…'), style: TextStyle(fontSize: 13, color: AppTheme.headingColor)),
+              Text(
+                tr('管理片段…'),
+                style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
+              ),
             ],
           ),
         ),
@@ -2979,7 +2995,9 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       unawaited(_manageSnippets());
     } else if (action.startsWith('send:')) {
       final id = action.substring(5);
-      final s = SnippetStore.snippets.value.where((e) => e.id == id).firstOrNull;
+      final s = SnippetStore.snippets.value
+          .where((e) => e.id == id)
+          .firstOrNull;
       if (s != null) _sendSnippet(s.command);
     }
   }
@@ -2990,6 +3008,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     final cmdCtrl = TextEditingController(text: existing?.command ?? '');
     final result = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(existing == null ? tr('新建片段') : tr('编辑片段')),
         content: SizedBox(
@@ -3059,6 +3079,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   Future<void> _manageSnippets() async {
     await showDialog<void>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(tr('管理片段')),
         content: SizedBox(
@@ -3091,7 +3113,10 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                       s.name.isEmpty ? s.command : s.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.headingColor,
+                      ),
                     ),
                     subtitle: Text(
                       s.command,
@@ -3964,7 +3989,12 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   /// 依据当前搜索选项(正则/大小写/全词)构造匹配器;正则非法返回 null。
   RegExp? _buildSearchMatcher(String query) {
     var pattern = _searchRegex ? query : RegExp.escape(query);
-    if (_searchWholeWord) pattern = r'\b(?:' '$pattern' r')\b';
+    if (_searchWholeWord) {
+      pattern =
+          r'\b(?:'
+          '$pattern'
+          r')\b';
+    }
     try {
       return RegExp(pattern, caseSensitive: _searchCaseSensitive);
     } catch (_) {
@@ -4314,8 +4344,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               itemBuilder: (context, i) {
                 final active = i == _historySuggestIndex;
                 return InkWell(
-                  onTap: () =>
-                      _acceptHistorySuggestion(_historySuggestions[i]),
+                  onTap: () => _acceptHistorySuggestion(_historySuggestions[i]),
                   child: Container(
                     color: active
                         ? AppTheme.brandColor.withValues(alpha: 0.14)
@@ -4408,7 +4437,6 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     _historyIndex = _history.length;
     unawaited(CommandHistoryStore.record(widget.sessionId, command));
   }
-
 
   String _promptText() => '${_shortPath(_cwd)}\$';
 
@@ -4824,7 +4852,11 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
             ),
           ],
           const SizedBox(width: 2),
-          _buildPanelTab(_TerminalPanelTab.files, LucideIcons.folder300, tr('文件')),
+          _buildPanelTab(
+            _TerminalPanelTab.files,
+            LucideIcons.folder300,
+            tr('文件'),
+          ),
           const Spacer(),
           _TerminalIconButton(
             tooltip: tr('关闭面板'),
@@ -4971,7 +5003,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
       (tr('自动折行'), _autoWrapMode ? tr('开') : tr('关')),
       (tr('光标'), _showCursor ? tr('显示') : tr('隐藏')),
       if (_isAltBufferActive) ('缓冲区', 'Alt Buffer'),
-      if ((_titleStack.current ?? '').isNotEmpty) (tr('标题'), _titleStack.current!),
+      if ((_titleStack.current ?? '').isNotEmpty)
+        (tr('标题'), _titleStack.current!),
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -5084,17 +5117,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               _toolbarButton(tr('搜索'), LucideIcons.search300, _showSearch),
               const SizedBox(width: 2),
               Builder(
-                builder: (btnContext) => _toolbarButton(
-                  tr('快捷命令 / 片段'),
-                  LucideIcons.zap300,
-                  () {
-                    final box = btnContext.findRenderObject() as RenderBox?;
-                    final pos = box == null
-                        ? Offset.zero
-                        : box.localToGlobal(box.size.bottomLeft(Offset.zero));
-                    unawaited(_showSnippetMenu(pos));
-                  },
-                ),
+                builder: (btnContext) =>
+                    _toolbarButton(tr('快捷命令 / 片段'), LucideIcons.zap300, () {
+                      final box = btnContext.findRenderObject() as RenderBox?;
+                      final pos = box == null
+                          ? Offset.zero
+                          : box.localToGlobal(box.size.bottomLeft(Offset.zero));
+                      unawaited(_showSnippetMenu(pos));
+                    }),
               ),
               const SizedBox(width: 2),
               _toolbarButton(
@@ -5104,17 +5134,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
               ),
               const SizedBox(width: 2),
               Builder(
-                builder: (btnContext) => _toolbarButton(
-                  tr('配色方案'),
-                  LucideIcons.palette300,
-                  () {
-                    final box = btnContext.findRenderObject() as RenderBox?;
-                    final pos = box == null
-                        ? Offset.zero
-                        : box.localToGlobal(box.size.bottomLeft(Offset.zero));
-                    unawaited(_showThemeMenu(pos));
-                  },
-                ),
+                builder: (btnContext) =>
+                    _toolbarButton(tr('配色方案'), LucideIcons.palette300, () {
+                      final box = btnContext.findRenderObject() as RenderBox?;
+                      final pos = box == null
+                          ? Offset.zero
+                          : box.localToGlobal(box.size.bottomLeft(Offset.zero));
+                      unawaited(_showThemeMenu(pos));
+                    }),
               ),
               if (widget.remoteCommand != null &&
                   widget.onOpenRemoteFiles != null) ...[
@@ -5708,9 +5735,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   ) {
     if (x <= 0) return 0;
     final proportional = !_isAltBufferActive && !_isNativePtyActive;
-    final wide = proportional
-        ? metrics.wideCellWidth
-        : metrics.cellWidth * 2;
+    final wide = proportional ? metrics.wideCellWidth : metrics.cellWidth * 2;
     var px = 0.0;
     var col = 0;
     for (final rune in line.text.runes) {
@@ -5835,6 +5860,8 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   Future<void> _showHistorySearchDialog() async {
     final selected = await showDialog<String>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => const _HistorySearchDialog(),
     );
     if (selected == null || selected.isEmpty || !mounted) return;
@@ -6051,10 +6078,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
-                          children: [
-                            lineWidget,
-                            _buildFoldPlaceholder(index),
-                          ],
+                          children: [lineWidget, _buildFoldPlaceholder(index)],
                         )
                       : lineWidget,
                 );
@@ -6347,9 +6371,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: AppTheme.backgroundColor.withValues(alpha: 0.35),
-              border: Border(
-                left: BorderSide(color: AppTheme.borderColor),
-              ),
+              border: Border(left: BorderSide(color: AppTheme.borderColor)),
             ),
             child: CustomPaint(
               size: Size.infinite,

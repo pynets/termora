@@ -11,6 +11,8 @@ Future<void> showHighlightManager(BuildContext context) async {
   if (!context.mounted) return;
   await showDialog<void>(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (context) => const _HighlightManagerDialog(),
   );
 }
@@ -161,6 +163,8 @@ class _HighlightManagerDialog extends StatelessWidget {
   Future<void> _edit(BuildContext context, HighlightRule? existing) async {
     final rule = await showDialog<HighlightRule>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => _HighlightEditDialog(existing: existing),
     );
     if (rule != null) await HighlightStore.upsert(rule);

@@ -49,7 +49,8 @@ class MarkdownTableEdit {
     return col < cells.length ? cells[col] : '';
   }
 
-  /// 写单元格(短行自动补齐到列数);竖线会破坏表格语法,替换成全角
+  /// 写单元格(短行自动补齐到列数)。
+  /// 竖线会破坏表格语法 → 全角;换行会把一格劈成两行 → 空格。
   static String setCell(String source, int row, int col, String value) {
     final lines = _lines(source);
     final lineIndex = row < 0 ? 0 : row + 2;
@@ -59,7 +60,10 @@ class MarkdownTableEdit {
     while (cells.length < columns || cells.length <= col) {
       cells.add('');
     }
-    cells[col] = value.trim().replaceAll('|', '｜');
+    cells[col] = value
+        .trim()
+        .replaceAll('|', '｜')
+        .replaceAll(RegExp(r'\s*[\r\n]+\s*'), ' ');
     lines[lineIndex] = _joinRow(cells);
     return lines.join('\n');
   }

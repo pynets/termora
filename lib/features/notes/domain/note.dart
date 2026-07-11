@@ -53,6 +53,32 @@ class Note {
   static int wordCount(String content) =>
       _cjkRe.allMatches(content).length + _wordRe.allMatches(content).length;
 
+  static final _naturalChunkRe = RegExp(r'\d+|\D+');
+
+  /// 数字自然排序:数字串按数值比较("第2章" < "第10章"),
+  /// 其余按不区分大小写的字符顺序。列表"按名称排序"用。
+  static int naturalCompare(String a, String b) {
+    final aChunks = _naturalChunkRe.allMatches(a).map((m) => m[0]!).toList();
+    final bChunks = _naturalChunkRe.allMatches(b).map((m) => m[0]!).toList();
+    final n = aChunks.length < bChunks.length
+        ? aChunks.length
+        : bChunks.length;
+    for (var i = 0; i < n; i++) {
+      final x = aChunks[i];
+      final y = bChunks[i];
+      final xNum = int.tryParse(x);
+      final yNum = int.tryParse(y);
+      int result;
+      if (xNum != null && yNum != null) {
+        result = xNum.compareTo(yNum);
+      } else {
+        result = x.toLowerCase().compareTo(y.toLowerCase());
+      }
+      if (result != 0) return result;
+    }
+    return aChunks.length.compareTo(bChunks.length);
+  }
+
   /// 去掉一行文本的 markdown 语法噪音(用于标题/摘要预览)
   static String stripMarkdownLine(String line) {
     var s = line.trim();

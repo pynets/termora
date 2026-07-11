@@ -241,6 +241,14 @@ void main() {
       expect(note('只有标题').summary, '');
     });
 
+    test('naturalCompare:数字按数值、字母不分大小写、前缀短者在前', () {
+      expect(Note.naturalCompare('第2章', '第10章'), lessThan(0));
+      expect(Note.naturalCompare('v1.9', 'v1.10'), lessThan(0));
+      expect(Note.naturalCompare('Abc', 'abd'), lessThan(0)); // 忽略大小写
+      expect(Note.naturalCompare('笔记', '笔记2'), lessThan(0)); // 前缀在前
+      expect(Note.naturalCompare('a10', 'a10'), 0);
+    });
+
     test('字数统计:中文按字,英文数字按词', () {
       expect(Note.wordCount('你好世界'), 4);
       expect(Note.wordCount('hello world_2 再见'), 4);

@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:termora/features/notes/data/note_search_index.dart';
+import 'package:termora/features/notes/domain/markdown_editing.dart';
 import 'package:termora/features/notes/domain/note.dart';
 
 /// 笔记持久化 — 正文按 marktext 的文件形态落盘:
@@ -22,6 +23,7 @@ class NoteStore {
   static const _viewModeKey = 'notes.view_mode.v1';
   static const _outlineKey = 'notes.outline.v1';
   static const _sidebarKey = 'notes.sidebar.v1';
+  static const _sortModeKey = 'notes.sort_mode.v1';
   static const _notebooksKey = 'notes.notebooks.v1';
   static const _activeNotebookKey = 'notes.active_notebook.v1';
   static const _focusModeKey = 'notes.focus_mode.v1';
@@ -68,7 +70,10 @@ class NoteStore {
         final id = entry['id'] as String? ?? '';
         if (id.isEmpty) continue;
         final file = _noteFile(dir, id);
-        final content = file.existsSync() ? file.readAsStringSync() : '';
+        // 归一换行:外部编辑过的 .md 可能带 CRLF,进内存统一 LF
+        final content = file.existsSync()
+            ? MarkdownEditing.normalizeNewlines(file.readAsStringSync())
+            : '';
         _written[id] = content;
         notes.add(
           Note(
@@ -200,6 +205,17 @@ class NoteStore {
   static Future<void> saveShowSidebar(bool show) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_sidebarKey, show);
+  }
+
+  /// 列表排序方式下标(NoteSortMode.index);默认 0 = 名称数字自然序
+  static Future<int> loadSortMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_sortModeKey) ?? 0;
+  }
+
+  static Future<void> saveSortMode(int mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_sortModeKey, mode);
   }
 
   // ── 笔记本(分组) ──

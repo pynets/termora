@@ -291,8 +291,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       TextPosition(offset: selection.extentOffset),
     );
     final position = _editorScroll.position;
-    final target = (caret.top + caret.height / 2 - position.viewportDimension / 2)
-        .clamp(0.0, position.maxScrollExtent);
+    final target =
+        (caret.top + caret.height / 2 - position.viewportDimension / 2).clamp(
+          0.0,
+          position.maxScrollExtent,
+        );
     _editorScroll.jumpTo(target);
   }
 
@@ -349,7 +352,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   void _updateFormatBar() {
     if (!mounted) return;
     final selection = _editorController.selection;
-    final show = _mode == NoteViewMode.edit &&
+    final show =
+        _mode == NoteViewMode.edit &&
         _editorFocus.hasFocus &&
         _editingNoteId != null &&
         selection.isValid &&
@@ -371,9 +375,13 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final endTop = render.localToGlobal(endRect.topLeft);
     final screen = MediaQuery.of(context).size;
 
-    _barLeft = ((startTop.dx + endTop.dx) / 2 -
-            FloatingFormatToolbar.estimatedWidth / 2)
-        .clamp(8.0, screen.width - FloatingFormatToolbar.estimatedWidth - 8);
+    _barLeft =
+        ((startTop.dx + endTop.dx) / 2 -
+                FloatingFormatToolbar.estimatedWidth / 2)
+            .clamp(
+              8.0,
+              screen.width - FloatingFormatToolbar.estimatedWidth - 8,
+            );
     // 默认悬在选区上方;顶部放不下就落到选区下方
     _barTop = startTop.dy - FloatingFormatToolbar.height - 8;
     if (_barTop < 8) {
@@ -489,7 +497,15 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   /// 选择图片文件 → 复制到笔记资源目录 → 光标处插入图片语法
   Future<void> _pickAndInsertImage() => _pickAndImport(
     dialogTitle: tr('插入图片'),
-    allowedExtensions: const ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'],
+    allowedExtensions: const [
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'bmp',
+      'svg',
+    ],
   );
 
   /// 选择视频/任意文件 → 复制进资源目录 → 插入附件链接(预览成卡片)
@@ -529,9 +545,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Future<void> _pasteSmart() async {
     final imagePath = await NoteAssetStore.saveClipboardImage();
     if (imagePath != null) {
-      _applyShortcut(
-        (v) => MarkdownEditing.insertDroppedPaths(v, [imagePath]),
-      );
+      _applyShortcut((v) => MarkdownEditing.insertDroppedPaths(v, [imagePath]));
       return;
     }
     final data = await Clipboard.getData(Clipboard.kTextPlain);
@@ -556,7 +570,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       final path = f.path;
       if (path == null || path.isEmpty) continue;
       try {
-        final content = await File(path).readAsString();
+        final content = MarkdownEditing.normalizeNewlines(
+          await File(path).readAsString(),
+        );
         controller.updateContent(controller.create(), content);
         FilePickerHelper.updateLastDirectory(path);
         imported++;
@@ -573,6 +589,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
   Future<void> _confirmDelete(Note note) async {
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(tr('删除笔记')),
         content: Text(tr2('确定删除「{0}」吗?此操作不可恢复。', [note.title])),
@@ -632,23 +650,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 头部两行:1) 笔记本切换器占满 + 唯一主操作「新建」;
+          // 2) 搜索框 + 排序。导入 Markdown 收进笔记本菜单(库级低频操作)。
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 8, 4),
+            padding: const EdgeInsets.fromLTRB(14, 10, 6, 0),
             child: Row(
               children: [
-                Flexible(child: _buildNotebookSwitcher(state)),
-                const Spacer(),
-                IconButton(
-                  tooltip: tr('导入 Markdown'),
-                  icon: Icon(
-                    LucideIcons.fileDown,
-                    size: 16,
-                    color: AppTheme.subtleTextColor,
-                  ),
-                  onPressed: _importNotes,
-                ),
+                Expanded(child: _buildNotebookSwitcher(state)),
                 IconButton(
                   tooltip: tr('新建笔记'),
+                  visualDensity: VisualDensity.compact,
                   icon: Icon(
                     LucideIcons.squarePen,
                     size: 17,
@@ -660,31 +671,44 @@ class _NotesPageState extends ConsumerState<NotesPage> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (v) => ref.read(notesProvider.notifier).setQuery(v),
-              style: TextStyle(fontSize: 13, color: AppTheme.headingColor),
-              decoration: InputDecoration(
-                hintText: tr('搜索笔记…'),
-                hintStyle: TextStyle(
-                  fontSize: 13,
-                  color: AppTheme.subtleTextColor,
+            padding: const EdgeInsets.fromLTRB(12, 6, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (v) =>
+                        ref.read(notesProvider.notifier).setQuery(v),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: AppTheme.headingColor,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: tr('搜索笔记…'),
+                      hintStyle: TextStyle(
+                        fontSize: 12.5,
+                        color: AppTheme.subtleTextColor,
+                      ),
+                      prefixIcon: Icon(
+                        LucideIcons.search,
+                        size: 14,
+                        color: AppTheme.subtleTextColor,
+                      ),
+                      prefixIconConstraints: const BoxConstraints(minWidth: 30),
+                      isDense: true,
+                      filled: true,
+                      fillColor: AppTheme.mutedSurfaceColor,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 7),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
                 ),
-                prefixIcon: Icon(
-                  LucideIcons.search,
-                  size: 15,
-                  color: AppTheme.subtleTextColor,
-                ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 34),
-                filled: true,
-                fillColor: AppTheme.mutedSurfaceColor,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(9),
-                  borderSide: BorderSide.none,
-                ),
-              ),
+                const SizedBox(width: 2),
+                _buildSortMenu(state),
+              ],
             ),
           ),
           Expanded(
@@ -767,7 +791,11 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           );
         }
 
-        PopupMenuItem<String> action(String value, IconData icon, String label) {
+        PopupMenuItem<String> action(
+          String value,
+          IconData icon,
+          String label,
+        ) {
           return PopupMenuItem(
             value: value,
             height: 34,
@@ -801,9 +829,19 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           const PopupMenuDivider(),
           action('__create__', LucideIcons.folderPlus, tr('新建笔记本…')),
           if (active != null) ...[
-            action('__rename__', LucideIcons.pencil, tr2('重命名「{0}」…', [active.name])),
-            action('__delete__', LucideIcons.trash2, tr2('删除「{0}」', [active.name])),
+            action(
+              '__rename__',
+              LucideIcons.pencil,
+              tr2('重命名「{0}」…', [active.name]),
+            ),
+            action(
+              '__delete__',
+              LucideIcons.trash2,
+              tr2('删除「{0}」', [active.name]),
+            ),
           ],
+          const PopupMenuDivider(),
+          action('__import__', LucideIcons.fileDown, tr('导入 Markdown…')),
         ];
       },
       child: Row(
@@ -812,9 +850,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           Icon(
             active == null ? LucideIcons.notebookText : LucideIcons.notebook,
             size: 15,
-            color: active == null
-                ? AppTheme.headingColor
-                : AppTheme.brandColor,
+            color: active == null ? AppTheme.headingColor : AppTheme.brandColor,
           ),
           const SizedBox(width: 6),
           Flexible(
@@ -850,6 +886,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     switch (value) {
       case '__all__':
         controller.setActiveNotebook(null);
+      case '__import__':
+        await _importNotes();
       case '__create__':
         final name = await _promptNotebookName(title: tr('新建笔记本'));
         if (name != null && name.trim().isNotEmpty) {
@@ -870,6 +908,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         if (active == null) return;
         final confirmed = await showDialog<bool>(
           context: context,
+          useRootNavigator: false,
+          barrierColor: Colors.black.withValues(alpha: 0.3),
           builder: (context) => AlertDialog(
             title: Text(tr('删除笔记本')),
             content: Text(tr2('删除「{0}」?其中的笔记会移回「全部笔记」,不会被删除。', [active.name])),
@@ -880,7 +920,10 @@ class _NotesPageState extends ConsumerState<NotesPage> {
               ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: Text(tr('删除'), style: TextStyle(color: AppTheme.errorColor)),
+                child: Text(
+                  tr('删除'),
+                  style: TextStyle(color: AppTheme.errorColor),
+                ),
               ),
             ],
           ),
@@ -898,6 +941,8 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     final controller = TextEditingController(text: initial ?? '');
     return showDialog<String>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(title),
         content: TextField(
@@ -922,6 +967,54 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       // 对话框关闭后再释放,避免输入中被销毁
       WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     });
+  }
+
+  /// 列表排序菜单:名称(数字自然序)/最近修改/最近创建,置顶恒在前
+  Widget _buildSortMenu(NotesState state) {
+    final items = [
+      (NoteSortMode.title, LucideIcons.arrowDownAZ, tr('名称(数字自然序)')),
+      (NoteSortMode.updated, LucideIcons.clock, tr('最近修改')),
+      (NoteSortMode.created, LucideIcons.calendarPlus, tr('最近创建')),
+    ];
+    return PopupMenuButton<NoteSortMode>(
+      tooltip: tr('排序'),
+      position: PopupMenuPosition.under,
+      onSelected: (mode) => ref.read(notesProvider.notifier).setSortMode(mode),
+      itemBuilder: (context) => [
+        for (final (mode, icon, label) in items)
+          PopupMenuItem(
+            value: mode,
+            height: 34,
+            child: Row(
+              children: [
+                Icon(icon, size: 14, color: AppTheme.subtleTextColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppTheme.headingColor,
+                    ),
+                  ),
+                ),
+                if (state.sortMode == mode)
+                  Icon(LucideIcons.check, size: 13, color: AppTheme.brandColor),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Icon(
+          LucideIcons.arrowUpDown,
+          size: 15,
+          color: state.sortMode == NoteSortMode.title
+              ? AppTheme.subtleTextColor
+              : AppTheme.brandColor,
+        ),
+      ),
+    );
   }
 
   Widget _sidebarPlaceholder(NotesState state) {
@@ -950,11 +1043,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         child: Stack(
           children: [
             // 侧栏收起时,空态页也要能把它请回来
-            Positioned(
-              left: 6,
-              top: 6,
-              child: _sidebarToggleButton(),
-            ),
+            Positioned(left: 6, top: 6, child: _sidebarToggleButton()),
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1041,9 +1130,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
     }
 
     return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.escape): _closeFind,
-      },
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): _closeFind},
       child: Container(
         color: AppTheme.surfaceColor,
         padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
@@ -1141,10 +1228,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
           ? Center(
               child: Text(
                 tr('暂无标题'),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.subtleTextColor,
-                ),
+                style: TextStyle(fontSize: 12, color: AppTheme.subtleTextColor),
               ),
             )
           : ListView.builder(
@@ -1274,10 +1358,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     icon: Icon(
                       LucideIcons.textSearch,
                       size: 15,
-                      color:
-                          _showFind
-                              ? AppTheme.brandColor
-                              : AppTheme.subtleTextColor,
+                      color: _showFind
+                          ? AppTheme.brandColor
+                          : AppTheme.subtleTextColor,
                     ),
                     onPressed: _showFind ? _closeFind : _openFind,
                   ),
@@ -1287,10 +1370,9 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     icon: Icon(
                       LucideIcons.tableOfContents,
                       size: 15,
-                      color:
-                          _showOutline
-                              ? AppTheme.brandColor
-                              : AppTheme.subtleTextColor,
+                      color: _showOutline
+                          ? AppTheme.brandColor
+                          : AppTheme.subtleTextColor,
                     ),
                     onPressed: _toggleOutline,
                   ),
@@ -1299,8 +1381,16 @@ class _NotesPageState extends ConsumerState<NotesPage> {
                     position: PopupMenuPosition.under,
                     onSelected: (ext) => _exportNote(note, ext),
                     itemBuilder: (context) => [
-                      _exportMenuItem('md', LucideIcons.fileText, 'Markdown (.md)'),
-                      _exportMenuItem('html', LucideIcons.fileCode, 'HTML (.html)'),
+                      _exportMenuItem(
+                        'md',
+                        LucideIcons.fileText,
+                        'Markdown (.md)',
+                      ),
+                      _exportMenuItem(
+                        'html',
+                        LucideIcons.fileCode,
+                        'HTML (.html)',
+                      ),
                       _exportMenuItem('pdf', LucideIcons.printer, 'PDF (.pdf)'),
                     ],
                     child: Padding(
@@ -1384,8 +1474,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
             _applyShortcut(MarkdownEditing.insertLink),
         // 智能粘贴:剪贴板是图片(截屏等)→ 落盘插图,否则按文本粘贴
-        const SingleActivator(LogicalKeyboardKey.keyV, meta: true):
-            _pasteSmart,
+        const SingleActivator(LogicalKeyboardKey.keyV, meta: true): _pasteSmart,
         const SingleActivator(LogicalKeyboardKey.keyV, control: true):
             _pasteSmart,
         // Tab 缩进/反缩进(列表嵌套),拦掉默认的焦点切换
@@ -1489,11 +1578,7 @@ class _NotesPageState extends ConsumerState<NotesPage> {
       expands: true,
       textAlignVertical: TextAlignVertical.top,
       inputFormatters: [MarkdownAutoContinueFormatter()],
-      style: TextStyle(
-        fontSize: 14.5,
-        height: 1.7,
-        color: AppTheme.bodyColor,
-      ),
+      style: TextStyle(fontSize: 14.5, height: 1.7, color: AppTheme.bodyColor),
       cursorColor: AppTheme.brandColor,
       decoration: InputDecoration(
         hintText: '# 标题\n\n开始书写 Markdown…',
@@ -1629,8 +1714,9 @@ class _NoteListTileState extends State<_NoteListTile> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: Container(
-          margin: const EdgeInsets.only(bottom: 2),
-          padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
+          // 紧凑排版:字号小于内容区、间距收紧,单屏多显示约三成条目
+          margin: const EdgeInsets.only(bottom: 1),
+          padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
           decoration: BoxDecoration(
             color: widget.selected
                 ? AppTheme.softBrandColor
@@ -1639,66 +1725,69 @@ class _NoteListTileState extends State<_NoteListTile> {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
           ),
-          child: Row(
+          // hover 菜单叠加在右上角,不参与布局(悬停时标题/时间不位移)
+          child: Stack(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        if (note.pinned) ...[
-                          Icon(
-                            LucideIcons.pin,
-                            size: 11,
-                            color: AppTheme.brandColor,
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        Expanded(
-                          child: Text(
-                            note.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: widget.selected
-                                  ? AppTheme.brandColor
-                                  : AppTheme.headingColor,
-                            ),
-                          ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (note.pinned) ...[
+                        Icon(
+                          LucideIcons.pin,
+                          size: 10,
+                          color: AppTheme.brandColor,
                         ),
+                        const SizedBox(width: 3),
                       ],
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        Text(
-                          _formatTime(note.updatedAt),
+                      // 标题居左、时间靠右(列表惯例),摘要独占第二行
+                      Expanded(
+                        child: Text(
+                          note.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.subtleTextColor,
+                            fontSize: 12.5,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                            color: widget.selected
+                                ? AppTheme.brandColor
+                                : AppTheme.headingColor,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            note.summary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.subtleTextColor,
-                            ),
-                          ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _formatTime(note.updatedAt),
+                        style: TextStyle(
+                          fontSize: 10,
+                          height: 1.35,
+                          color: AppTheme.subtleTextColor,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  // 摘要略缩进,与标题拉开层次(Apple Notes 式)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2),
+                    child: Text(
+                      note.summary.isEmpty ? ' ' : note.summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.3,
+                        color: AppTheme.subtleTextColor,
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              if (_hovered || _menuOpen) _buildMenu(),
+              if (_hovered || _menuOpen)
+                Positioned(right: 0, top: 0, child: _buildMenu()),
             ],
           ),
         ),

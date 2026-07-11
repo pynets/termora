@@ -100,6 +100,9 @@ void main() async {
   runApp(const ProviderScope(child: TermoraApp()));
 }
 
+/// 根 Navigator key — 供无 BuildContext 的后台逻辑(如定时任务)弹 toast。
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 class TermoraApp extends ConsumerStatefulWidget {
   const TermoraApp({super.key});
 
@@ -163,6 +166,7 @@ class _TermoraAppState extends ConsumerState<TermoraApp>
         marginBuilder: _toastMarginBuilder,
       ),
       child: MaterialApp(
+        navigatorKey: rootNavigatorKey,
         builder: (context, child) {
           return ToastificationWrapper(child: child!);
         },

@@ -18,6 +18,8 @@ Future<void> showExportDialog(
 }) {
   return showDialog(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (context) => _ExportDialog(output: output, tableName: tableName),
   );
 }

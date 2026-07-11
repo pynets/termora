@@ -76,6 +76,8 @@ class _TransferLogDialogState extends State<TransferLogDialog> {
     final scopeHost = _hostFilter;
     final confirmed = await showDialog<bool>(
       context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => AlertDialog(
         title: Text(tr('清空传输记录')),
         content: Text(

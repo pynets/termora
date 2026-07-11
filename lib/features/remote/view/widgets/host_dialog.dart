@@ -16,6 +16,8 @@ Future<SshHost?> showSshHostDialog(
 }) {
   return showDialog<SshHost>(
     context: context,
+    useRootNavigator: false,
+    barrierColor: Colors.black.withValues(alpha: 0.3),
     builder: (context) => _SshHostDialog(existing: existing, groups: groups),
   );
 }

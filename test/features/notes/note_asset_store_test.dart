@@ -72,6 +72,18 @@ void main() {
   });
 
   group('insertText(智能粘贴的文本分支)', () {
+    test('CR/CRLF 换行归一成 LF(PDF/Excel/Windows 复制源不丢换行)', () {
+      final v = MarkdownEditing.insertText(
+        const TextEditingValue(
+          text: '',
+          selection: TextSelection.collapsed(offset: 0),
+        ),
+        '第一行\r第二行\r\n第三行\n第四行',
+      );
+      expect(v.text, '第一行\n第二行\n第三行\n第四行');
+      expect(v.selection.baseOffset, v.text.length);
+    });
+
     test('光标处插入,有选区则替换,光标落在插入内容后', () {
       final collapsed = MarkdownEditing.insertText(
         const TextEditingValue(
