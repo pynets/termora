@@ -70,6 +70,9 @@ dependencies:
   # 笔记导出 PDF
   pdf: ^3.12.0
 
+  # 系统监控:macOS 每核 CPU 使用率走 mach host_processor_info(FFI)
+  ffi: ^2.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

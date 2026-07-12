@@ -7,8 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:termora/core/services/workspace_store.dart';
 import 'package:termora/features/database/data/connection_store.dart';
 import 'package:termora/features/database/data/db_service.dart';
+import 'package:termora/features/database/data/db_metrics_service.dart';
 import 'package:termora/features/database/data/db_transfer_service.dart';
 import 'package:termora/features/database/data/db_transfer_task_store.dart';
+import 'package:termora/features/database/domain/db_metrics.dart';
 import 'package:termora/features/database/domain/db_transfer_task.dart';
 import 'package:termora/features/database/domain/db_models.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
@@ -224,6 +226,9 @@ class DbSqlState {
 /// SQL 编辑器所在的固定 Tab 下标
 const int kSqlTabIndex = -1;
 
+/// 概览仪表盘所在的固定 Tab 下标(连接后默认展示)
+const int kOverviewTabIndex = -2;
+
 class DbSessionState {
   DbSessionState({
     this.status = DbSessionStatus.disconnected,
@@ -234,7 +239,7 @@ class DbSessionState {
     this.tables = const {},
     this.loadingSchemas = const {},
     this.tabs = const [],
-    this.activeTab = kSqlTabIndex,
+    this.activeTab = kOverviewTabIndex,
     DbSqlState? sql,
   }) : sql = sql ?? DbSqlState();
 
@@ -549,7 +554,9 @@ class DbSessionController extends Notifier<DbSessionsState> {
     final targetId = connectionId ?? state.activeId;
     if (targetId == null) return;
     final session = state.sessionFor(targetId);
-    if (index == kSqlTabIndex || (index >= 0 && index < session.tabs.length)) {
+    if (index == kSqlTabIndex ||
+        index == kOverviewTabIndex ||
+        (index >= 0 && index < session.tabs.length)) {
       _updateSession(targetId, (s) => s.copyWith(activeTab: index));
       _saveWorkspace(targetId);
     }
@@ -595,13 +602,13 @@ class DbSessionController extends Notifier<DbSessionsState> {
       if (key == null) {
         _updateSession(
           connectionId,
-          (s) => s.copyWith(activeTab: kSqlTabIndex),
+          (s) => s.copyWith(activeTab: kOverviewTabIndex),
         );
       } else {
         final idx = session.tabs.indexWhere((t) => t.qualifiedName == key);
         _updateSession(
           connectionId,
-          (s) => s.copyWith(activeTab: idx >= 0 ? idx : kSqlTabIndex),
+          (s) => s.copyWith(activeTab: idx >= 0 ? idx : kOverviewTabIndex),
         );
       }
     } finally {
@@ -1286,3 +1293,17 @@ final dbTransferTasksProvider =
     NotifierProvider<DbTransferTasksController, List<DbTransferTask>>(
       DbTransferTasksController.new,
     );
+
+// ----------------------------------------------------------------------
+// 数据库概览指标(按连接 id 懒加载,invalidate 刷新)
+// ----------------------------------------------------------------------
+
+final dbMetricsProvider = FutureProvider.autoDispose
+    .family<DbMetrics, String>((ref, connectionId) async {
+      final config = ref
+          .watch(dbConnectionsProvider)
+          .where((c) => c.id == connectionId)
+          .firstOrNull;
+      if (config == null) throw StateError('连接不存在');
+      return DbMetricsService.load(config);
+    });

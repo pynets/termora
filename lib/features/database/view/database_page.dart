@@ -19,6 +19,7 @@ import 'package:termora/features/database/domain/sql_variables.dart';
 import 'package:termora/features/database/view/widgets/column_filter_popup.dart';
 import 'package:termora/features/database/view/widgets/connection_dialog.dart';
 import 'package:termora/features/database/view/widgets/db_data_grid.dart';
+import 'package:termora/features/database/view/widgets/db_overview_panel.dart';
 import 'package:termora/features/database/view/widgets/export_dialog.dart';
 import 'package:termora/features/database/view/widgets/sql_editor.dart';
 import 'package:termora/features/database/view/widgets/table_structure_view.dart';
@@ -660,9 +661,14 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           _buildTabBar(session),
           Divider(height: 1, thickness: 0.5, color: AppTheme.borderColor),
           Expanded(
-            child: session.activeTab == kSqlTabIndex
-                ? _buildSqlView(session)
-                : _buildTableView(session),
+            child: switch (session.activeTab) {
+              kOverviewTabIndex => DbOverviewPanel(
+                key: ValueKey('overview-${session.config!.id}'),
+                connectionId: session.config!.id,
+              ),
+              kSqlTabIndex => _buildSqlView(session),
+              _ => _buildTableView(session),
+            },
           ),
         ],
       ),
@@ -797,6 +803,14 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            _tabChip(
+              icon: LucideIcons.chartColumnBig,
+              label: tr('概览'),
+              active: session.activeTab == kOverviewTabIndex,
+              onTap: () => ref
+                  .read(dbSessionProvider.notifier)
+                  .activateTab(kOverviewTabIndex),
+            ),
             _tabChip(
               icon: LucideIcons.squareCode,
               label: 'SQL',

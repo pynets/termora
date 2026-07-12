@@ -51,6 +51,7 @@ class AppL10n {
   String get remote => isZh ? '远程' : 'Remote';
   String get database => isZh ? '数据库' : 'Database';
   String get notes => isZh ? '笔记' : 'Notes';
+  String get monitor => isZh ? '监控' : 'Monitor';
   String get settings => isZh ? '设置' : 'Settings';
   String get notConnected => isZh ? '未连接' : 'Not connected';
   String get hostList => isZh ? '主机列表' : 'Hosts';

@@ -10,6 +10,7 @@ import 'package:termora/core/services/tray_service.dart';
 import 'package:termora/features/database/controller/db_schedule_controller.dart';
 import 'package:termora/core/services/workspace_store.dart';
 import 'package:termora/features/database/view/database_page.dart';
+import 'package:termora/features/monitor/view/monitor_page.dart';
 import 'package:termora/features/notes/view/notes_page.dart';
 import 'package:termora/features/remote/view/remote_page.dart';
 import 'package:termora/features/settings/controller/app_update_controller.dart';
@@ -40,7 +41,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     super.initState();
     // 恢复上次停留的功能页
     WorkspaceStore.loadActiveFeature().then((index) {
-      if (mounted && index >= 0 && index < 4) {
+      if (mounted && index >= 0 && index < 5) {
         setState(() => _selectedIndex = index);
       }
     });
@@ -148,6 +149,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                             _FeatureHost(child: RemotePage()),
                             _FeatureHost(child: DatabasePage()),
                             _FeatureHost(child: NotesPage()),
+                            _FeatureHost(child: MonitorPage()),
                           ],
                         ),
                       ),
@@ -179,6 +181,7 @@ class _MainShellState extends ConsumerState<MainShell> {
       (icon: LucideIcons.server, label: l10n.remote),
       (icon: LucideIcons.database, label: l10n.database),
       (icon: LucideIcons.notebookPen, label: l10n.notes),
+      (icon: LucideIcons.activity, label: l10n.monitor),
     ];
 
     return Container(
