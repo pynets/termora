@@ -10,6 +10,7 @@ import 'package:toastification/toastification.dart';
 
 import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/widgets/app_toast.dart';
+import 'package:termora/core/widgets/file_preview.dart';
 import 'package:termora/core/data/transfer_log_store.dart';
 import 'package:termora/core/widgets/slide_select.dart';
 import 'package:termora/core/utils/file_picker_helper.dart';
@@ -1352,6 +1353,40 @@ class _SftpBrowserState extends State<SftpBrowser> {
 
   // ── 远端文件直接编辑(下载→系统编辑器→保存自动回传)──
 
+  /// 把条目落成本地路径:本地栏直接返回,远端栏下载到临时文件
+  Future<String> _materializeEntry(SftpEntry entry, {required bool isRemote}) async {
+    if (!isRemote) return _join(_localPath, entry.name);
+    final tempDir = await Directory.systemTemp.createTemp('termora_preview_');
+    final localPath = '${tempDir.path}/${entry.name}';
+    final dl = await _startDownload(_join(_remotePath, entry.name), localPath);
+    await dl.done;
+    return localPath;
+  }
+
+  /// 点击文件预览:文本/md/图片内联,其它类型系统默认打开
+  Future<void> _previewEntry(
+    SftpEntry entry, {
+    required bool isRemote,
+    required String dir,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => FilePreviewDialog(
+        name: entry.name,
+        size: entry.size,
+        readBytes: () async =>
+            File(await _materializeEntry(entry, isRemote: isRemote))
+                .readAsBytes(),
+        openExternally: () async {
+          try {
+            final path = await _materializeEntry(entry, isRemote: isRemote);
+            unawaited(Process.run('open', [path]));
+          } catch (_) {}
+        },
+      ),
+    );
+  }
+
   Future<void> _editRemoteFile(SftpEntry entry) async {
     final remoteFile = _join(_remotePath, entry.name);
     final remoteDir = _remotePath;
@@ -2225,9 +2260,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
           ? () => isRemote
                 ? _navigateRemote(_join(dir, entry.name))
                 : _navigateLocal(_join(dir, entry.name))
-          : isRemote
-          ? null
-          : () => _openLocally(_join(dir, entry.name)),
+          : () => _previewEntry(entry, isRemote: isRemote, dir: dir),
       transferTooltip: isRemote ? tr('下载到本地栏') : tr('上传到远端栏'),
       transferIcon: isRemote ? LucideIcons.download300 : LucideIcons.upload300,
       onTransfer: () => isRemote

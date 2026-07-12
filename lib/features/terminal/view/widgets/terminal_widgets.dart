@@ -1880,10 +1880,12 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
             child: Text('在终端进入此目录'),
           ),
         if (!node.isDir)
-          const PopupMenuItem(
+          PopupMenuItem(value: 'preview', height: 34, child: Text(tr('预览'))),
+        if (!node.isDir)
+          PopupMenuItem(
             value: 'insert',
             height: 34,
-            child: Text('插入路径到命令行'),
+            child: Text(tr('插入路径到命令行')),
           ),
         if (canDownload)
           PopupMenuItem(
@@ -1911,6 +1913,8 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     switch (action) {
       case 'open':
         _onOpen(node);
+      case 'preview':
+        unawaited(_previewFile(node));
       case 'cd':
         widget.onCdInTerminal?.call(node.path);
       case 'insert':
@@ -2076,17 +2080,62 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     }
   }
 
-  /// 双击打开:目录进入(扁平导航,替换列表);文件下载(有下载通道)或插入路径
+  /// 双击打开:目录进入(扁平导航);文件弹预览
+  /// (文本/md/图片内联,其它系统默认打开)
   void _onOpen(_FileNode node) {
     if (node.isDir) {
       _navigateTo(node.path);
       return;
     }
-    if (widget.remoteDownloader != null) {
-      unawaited(_downloadEntry(node));
-    } else {
-      widget.onInsertPath(node.path);
+    unawaited(_previewFile(node));
+  }
+
+  /// 把远端文件下载到临时文件,返回本地路径(本地模式直接返回原路径)
+  Future<String> _materialize(_FileNode node) async {
+    final downloader = widget.remoteDownloader;
+    if (downloader == null) return node.path; // 本地文件
+    final tempDir = await Directory.systemTemp.createTemp('termora_preview_');
+    final localPath = '${tempDir.path}/${node.name}';
+    final completer = Completer<void>();
+    final sub = downloader(node.path, localPath, false).listen(
+      (_) {},
+      onError: (Object e) {
+        if (!completer.isCompleted) completer.completeError(e);
+      },
+      onDone: () {
+        if (!completer.isCompleted) completer.complete();
+      },
+      cancelOnError: true,
+    );
+    await completer.future;
+    await sub.cancel();
+    return localPath;
+  }
+
+  Future<void> _openExternally(_FileNode node) async {
+    try {
+      final localPath = await _materialize(node);
+      await Process.run('open', [localPath]);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text(tr2('打开失败:{0}', ['$e']))),
+        );
+      }
     }
+  }
+
+  Future<void> _previewFile(_FileNode node) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => FilePreviewDialog(
+        name: node.name,
+        size: node.size,
+        readBytes: () async => File(await _materialize(node)).readAsBytes(),
+        openExternally: () => _openExternally(node),
+      ),
+    );
   }
 
   List<_FileNode> get _visible {
