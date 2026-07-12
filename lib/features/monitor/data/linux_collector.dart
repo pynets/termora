@@ -39,6 +39,9 @@ class LinuxCollector extends PlatformCollector {
   /// nvidia-smi 不存在时置 false,之后不再反复尝试。
   bool _nvidiaAvailable = true;
 
+  /// NVIDIA compute 进程的显存占用(pid -> 字节)。
+  Map<int, int> _procGpuMem = const {};
+
   @override
   Future<MonitorSnapshot> sample() async {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -56,6 +59,11 @@ class LinuxCollector extends PlatformCollector {
     }
 
     final diskRates = _sampleDiskRates(now);
+    // 先刷 GPU(同时更新每进程显存表),再做进程增强。
+    final gpus = await _readGpus();
+    final processes = _attachGpuMem(
+      await _withInstantCpu(ps == null ? const [] : parsePsOutput(ps), now),
+    );
 
     return MonitorSnapshot(
       tMillis: now,
@@ -71,13 +79,10 @@ class LinuxCollector extends PlatformCollector {
         null,
         (a, r) => (a ?? 0) + (r.$2 ?? 0),
       ),
-      gpus: await _readGpus(),
+      gpus: gpus,
       temps: _readTemps(),
       battery: _battery,
-      processes: await _withInstantCpu(
-        ps == null ? const [] : parsePsOutput(ps),
-        now,
-      ),
+      processes: processes,
       loadAvg: _readLoadAvg(),
       uptime: _readUptime(),
     );
@@ -191,15 +196,17 @@ class LinuxCollector extends PlatformCollector {
       final io = _readFile('/proc/${p.pid}/io');
       if (io != null) {
         final read = int.tryParse(
-          RegExp(r'^read_bytes:\s+(\d+)', multiLine: true)
-                  .firstMatch(io)
-                  ?.group(1) ??
+          RegExp(
+                r'^read_bytes:\s+(\d+)',
+                multiLine: true,
+              ).firstMatch(io)?.group(1) ??
               '',
         );
         final write = int.tryParse(
-          RegExp(r'^write_bytes:\s+(\d+)', multiLine: true)
-                  .firstMatch(io)
-                  ?.group(1) ??
+          RegExp(
+                r'^write_bytes:\s+(\d+)',
+                multiLine: true,
+              ).firstMatch(io)?.group(1) ??
               '',
         );
         if (read != null && write != null) ioBytes[p.pid] = (read, write);
@@ -380,7 +387,10 @@ class LinuxCollector extends PlatformCollector {
             ),
           );
         }
-        if (gpus.isNotEmpty) return gpus;
+        if (gpus.isNotEmpty) {
+          await _refreshProcGpuMem();
+          return gpus;
+        }
       }
     }
 
@@ -416,6 +426,51 @@ class LinuxCollector extends PlatformCollector {
     return gpus;
   }
 
+  /// NVIDIA compute 进程的显存表(nvidia-smi query-compute-apps,MiB)。
+  Future<void> _refreshProcGpuMem() async {
+    final out = await runForStdout('nvidia-smi', const [
+      '--query-compute-apps=pid,used_gpu_memory',
+      '--format=csv,noheader,nounits',
+    ], timeout: const Duration(seconds: 4));
+    if (out == null) return;
+    final mem = <int, int>{};
+    for (final line in out.split('\n')) {
+      final f = line.split(',').map((v) => v.trim()).toList();
+      if (f.length < 2) continue;
+      final pid = int.tryParse(f[0]);
+      final mib = int.tryParse(f[1]);
+      if (pid == null || mib == null) continue;
+      mem[pid] = mib * 1024 * 1024;
+    }
+    _procGpuMem = mem;
+  }
+
+  /// 把每进程显存挂到进程列表上(仅 NVIDIA compute 进程有值)。
+  List<ProcInfo> _attachGpuMem(List<ProcInfo> procs) {
+    if (_procGpuMem.isEmpty) return procs;
+    return [
+      for (final p in procs)
+        () {
+          final mem = _procGpuMem[p.pid];
+          if (mem == null) return p;
+          return ProcInfo(
+            pid: p.pid,
+            ppid: p.ppid,
+            user: p.user,
+            name: p.name,
+            command: p.command,
+            cpuPercent: p.cpuPercent,
+            memPercent: p.memPercent,
+            rssBytes: p.rssBytes,
+            state: p.state,
+            readRate: p.readRate,
+            writeRate: p.writeRate,
+            gpuMemBytes: mem,
+          );
+        }(),
+    ];
+  }
+
   // -------------------------------------------------------- Temperature
 
   List<TempSensor> _readTemps() {
@@ -425,16 +480,16 @@ class LinuxCollector extends PlatformCollector {
       if (hwmon.existsSync()) {
         for (final dir in hwmon.listSync().whereType<Directory>()) {
           final name =
-              _readFile('${dir.path}/name')?.trim() ??
-              dir.path.split('/').last;
+              _readFile('${dir.path}/name')?.trim() ?? dir.path.split('/').last;
           for (final f in dir.listSync().whereType<File>()) {
             final base = f.path.split('/').last;
             final m = RegExp(r'^temp(\d+)_input$').firstMatch(base);
             if (m == null) continue;
             final raw = int.tryParse(_readFile(f.path)?.trim() ?? '');
             if (raw == null) continue;
-            final label =
-                _readFile('${dir.path}/temp${m.group(1)}_label')?.trim();
+            final label = _readFile(
+              '${dir.path}/temp${m.group(1)}_label',
+            )?.trim();
             temps.add(
               TempSensor(
                 label: label == null || label.isEmpty ? name : '$name $label',
@@ -528,9 +583,7 @@ class LinuxCollector extends PlatformCollector {
     if (content == null) return null;
     final f = content.trim().split(RegExp(r'\s+'));
     if (f.length < 3) return null;
-    final values = [
-      for (var i = 0; i < 3; i++) double.tryParse(f[i]) ?? 0,
-    ];
+    final values = [for (var i = 0; i < 3; i++) double.tryParse(f[i]) ?? 0];
     return values;
   }
 

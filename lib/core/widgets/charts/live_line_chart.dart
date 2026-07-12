@@ -116,7 +116,11 @@ class _LiveLineChartState extends State<LiveLineChart> {
       final frac = (clampedX - plotLeft) / plotW;
       idx = (frac * (count - 1)).round().clamp(0, count - 1);
     }
-    if (idx != _hoverIndex || local != _hoverPos) {
+    // 只在命中样本点变化(或纵向明显移动)时重绘 —— 否则每个鼠标移动
+    // 事件都触发全图重绘,悬停划过图表时 CPU 被白白烧掉。
+    final prevPos = _hoverPos;
+    final movedFar = prevPos == null || (local.dy - prevPos.dy).abs() > 24;
+    if (idx != _hoverIndex || movedFar) {
       setState(() {
         _hoverIndex = idx;
         _hoverPos = local;
@@ -152,22 +156,25 @@ class _LiveLineChartState extends State<LiveLineChart> {
           _updateHover(box.globalToLocal(e.position), box.size);
         },
         onExit: (_) => _clearHover(),
-        child: CustomPaint(
-          painter: _LineChartPainter(
-            series: widget.series,
-            sampleCount: _sampleCount,
-            gridColor: gridColor,
-            textColor: textColor,
-            tooltipBg: tooltipBg,
-            surfaceColor: widget.surfaceColor,
-            minYOverride: widget.minY,
-            maxYOverride: widget.maxY,
-            yFormat: yFormat,
-            hoverIndex: _hoverIndex,
-            hoverPos: _hoverPos,
-            leftPad: _leftPad,
-            topPad: _topPad,
-            bottomPad: _bottomPad,
+        // 隔离重绘:悬停十字准星高频重绘时不连带父级面板一起重画。
+        child: RepaintBoundary(
+          child: CustomPaint(
+            painter: _LineChartPainter(
+              series: widget.series,
+              sampleCount: _sampleCount,
+              gridColor: gridColor,
+              textColor: textColor,
+              tooltipBg: tooltipBg,
+              surfaceColor: widget.surfaceColor,
+              minYOverride: widget.minY,
+              maxYOverride: widget.maxY,
+              yFormat: yFormat,
+              hoverIndex: _hoverIndex,
+              hoverPos: _hoverPos,
+              leftPad: _leftPad,
+              topPad: _topPad,
+              bottomPad: _bottomPad,
+            ),
           ),
         ),
       ),
@@ -520,10 +527,7 @@ class _LineChartPainter extends CustomPainter {
 
     final rect = Rect.fromLTWH(left, top, boxW, boxH);
     final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
-    canvas.drawRRect(
-      rrect,
-      Paint()..color = tooltipBg.withValues(alpha: 0.95),
-    );
+    canvas.drawRRect(rrect, Paint()..color = tooltipBg.withValues(alpha: 0.95));
     canvas.drawRRect(
       rrect,
       Paint()

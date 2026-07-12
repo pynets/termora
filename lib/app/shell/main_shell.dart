@@ -144,12 +144,22 @@ class _MainShellState extends ConsumerState<MainShell> {
                         key: const ValueKey('main_shell_content'),
                         child: IndexedStack(
                           index: _selectedIndex,
-                          children: const [
-                            _FeatureHost(child: TerminalPage()),
-                            _FeatureHost(child: RemotePage()),
-                            _FeatureHost(child: DatabasePage()),
-                            _FeatureHost(child: NotesPage()),
-                            _FeatureHost(child: MonitorPage()),
+                          // IndexedStack 的 Visibility(maintainAnimation: true)
+                          // 不带 TickerMode:隐藏页的循环动画会一直以满帧率
+                          // 驱动整窗重绘(实测 ~115fps、20%+ CPU)。这里显式
+                          // 按选中态包 TickerMode,切走的页动画/采样全部停摆。
+                          children: [
+                            for (final (i, page) in const <Widget>[
+                              _FeatureHost(child: TerminalPage()),
+                              _FeatureHost(child: RemotePage()),
+                              _FeatureHost(child: DatabasePage()),
+                              _FeatureHost(child: NotesPage()),
+                              _FeatureHost(child: MonitorPage()),
+                            ].indexed)
+                              TickerMode(
+                                enabled: i == _selectedIndex,
+                                child: page,
+                              ),
                           ],
                         ),
                       ),

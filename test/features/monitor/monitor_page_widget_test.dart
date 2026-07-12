@@ -96,6 +96,9 @@ class _StubMonitorController extends MonitorController {
           state: 'R',
           readRate: 1024,
           writeRate: 2048,
+          netRxRate: 4096,
+          netTxRate: 512,
+          gpuMemBytes: 256 * 1024 * 1024,
         ),
       ],
       loadAvg: const [3.43, 3.52, 3.31],
@@ -147,9 +150,12 @@ void main() {
     // 进程行。
     expect(find.text('termora'), findsOneWidget);
     expect(find.text('launchd'), findsOneWidget);
-    // 有进程带磁盘 I/O 数据时显示 读/s 写/s 两列。
+    // 有进程带磁盘 I/O / 网络 / 显存数据时显示对应列。
     expect(find.text('读/s'), findsOneWidget);
     expect(find.text('写/s'), findsOneWidget);
+    expect(find.text('收/s'), findsOneWidget);
+    expect(find.text('发/s'), findsOneWidget);
+    expect(find.text('显存'), findsWidgets);
 
     // 每核开关。
     await tester.tap(find.text('每核'));

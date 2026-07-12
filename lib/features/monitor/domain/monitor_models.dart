@@ -154,6 +154,9 @@ class ProcInfo {
     required this.state,
     this.readRate,
     this.writeRate,
+    this.netRxRate,
+    this.netTxRate,
+    this.gpuMemBytes,
   });
 
   final int pid;
@@ -177,6 +180,13 @@ class ProcInfo {
   /// 其他平台或无权限时为 null)。
   final double? readRate;
   final double? writeRate;
+
+  /// 每秒网络收/发字节(macOS nettop 差分;其他平台为 null)。
+  final double? netRxRate;
+  final double? netTxRate;
+
+  /// GPU 显存占用(Linux NVIDIA compute 进程;其他平台为 null)。
+  final int? gpuMemBytes;
 }
 
 /// 一次完整采样(各维度拿不到时为 null / 空表,页面按可用性降级展示)。

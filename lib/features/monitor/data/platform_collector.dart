@@ -22,11 +22,7 @@ abstract class PlatformCollector {
   Future<bool> killProcess(int pid, {bool force = false}) async {
     try {
       final result = Platform.isWindows
-          ? await Process.run('taskkill', [
-              if (force) '/F',
-              '/PID',
-              '$pid',
-            ])
+          ? await Process.run('taskkill', [if (force) '/F', '/PID', '$pid'])
           : await Process.run('kill', [force ? '-KILL' : '-TERM', '$pid']);
       return result.exitCode == 0;
     } catch (_) {

@@ -134,10 +134,7 @@ class MonitorController extends Notifier<MonitorState> {
     final window = prefs.getInt(_prefWindow);
     final order = prefs.getStringList(_prefOrder);
     final hidden = prefs.getStringList(_prefHidden);
-    if (interval == null &&
-        window == null &&
-        order == null &&
-        hidden == null) {
+    if (interval == null && window == null && order == null && hidden == null) {
       return;
     }
     state = state.copyWith(
@@ -204,8 +201,7 @@ class MonitorController extends Notifier<MonitorState> {
   }
 
   Future<bool> killProcess(int pid, {bool force = false}) async {
-    final ok =
-        await _collector?.killProcess(pid, force: force) ?? false;
+    final ok = await _collector?.killProcess(pid, force: force) ?? false;
     if (ok) unawaited(_tick());
     return ok;
   }

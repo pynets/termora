@@ -13,7 +13,10 @@ import 'package:termora/features/monitor/domain/monitor_models.dart';
 import 'package:termora/features/monitor/view/widgets/monitor_format.dart';
 import 'package:termora/features/monitor/view/widgets/monitor_panels.dart';
 
-enum _ProcSort { cpu, mem, pid, name, user, io }
+enum _ProcSort { cpu, mem, pid, name, user, io, net, gpuMem }
+
+/// 进程表按面板宽度分级显示的可选列。
+typedef _ProcCols = ({bool pid, bool user, bool io, bool net, bool gpu});
 
 /// 信号菜单可选信号(TERM/KILL 已有专属按钮)。
 const List<String> kProcSignals = [
@@ -104,6 +107,8 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
 
   static double _ioOf(ProcInfo p) => (p.readRate ?? 0) + (p.writeRate ?? 0);
 
+  static double _netOf(ProcInfo p) => (p.netRxRate ?? 0) + (p.netTxRate ?? 0);
+
   int _compare(ProcInfo a, ProcInfo b) {
     final cmp = switch (_sort) {
       _ProcSort.cpu => a.cpuPercent.compareTo(b.cpuPercent),
@@ -112,6 +117,8 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
       _ProcSort.name => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
       _ProcSort.user => a.user.compareTo(b.user),
       _ProcSort.io => _ioOf(a).compareTo(_ioOf(b)),
+      _ProcSort.net => _netOf(a).compareTo(_netOf(b)),
+      _ProcSort.gpuMem => (a.gpuMemBytes ?? 0).compareTo(b.gpuMemBytes ?? 0),
     };
     return _ascending ? cmp : -cmp;
   }
@@ -119,7 +126,10 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
   // ------------------------------------------------------------ 行数据
 
   List<_ProcRowData> _flatRows() {
-    final rows = [for (final p in _all) if (_matches(p)) p]..sort(_compare);
+    final rows = [
+      for (final p in _all)
+        if (_matches(p)) p,
+    ]..sort(_compare);
     return [for (final p in rows) _ProcRowData(p)];
   }
 
@@ -180,10 +190,12 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
         _ProcSort.cpu => a.cpuPercent.compareTo(b.cpuPercent),
         _ProcSort.mem => a.rssBytes.compareTo(b.rssBytes),
         // 聚合模式下 PID 列显示的是进程数,排序也按它来。
-        _ProcSort.pid || _ProcSort.io => a.count.compareTo(b.count),
-        _ProcSort.name || _ProcSort.user => a.name.toLowerCase().compareTo(
-          b.name.toLowerCase(),
-        ),
+        _ProcSort.pid ||
+        _ProcSort.io ||
+        _ProcSort.net ||
+        _ProcSort.gpuMem => a.count.compareTo(b.count),
+        _ProcSort.name ||
+        _ProcSort.user => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
       };
       return _ascending ? cmp : -cmp;
     });
@@ -274,39 +286,47 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
     final total = _all.length;
     final hasUser = _all.any((p) => p.user.isNotEmpty);
     final hasIo = _all.any((p) => p.readRate != null || p.writeRate != null);
+    final hasNet = _all.any((p) => p.netRxRate != null || p.netTxRate != null);
+    final hasGpu = _all.any((p) => p.gpuMemBytes != null);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 560;
         final showIo = hasIo && constraints.maxWidth >= 760;
+        final showNet = hasNet && constraints.maxWidth >= 760;
+        final showGpu = hasGpu && constraints.maxWidth >= 880;
         final showUser = hasUser && constraints.maxWidth >= 580;
         final showPid = constraints.maxWidth >= 460;
+        final cols = (
+          pid: showPid,
+          user: showUser,
+          io: showIo,
+          net: showNet,
+          gpu: showGpu,
+        );
 
         final grouped = _mode == _ViewMode.group;
         final minWidth = grouped
             ? 410.0
             : 398.0 +
-                (showPid ? 76.0 : 0.0) +
-                (showUser ? 90.0 : 0.0) +
-                (showIo ? 128.0 : 0.0);
+                  (showPid ? 76.0 : 0.0) +
+                  (showUser ? 90.0 : 0.0) +
+                  (showIo ? 128.0 : 0.0) +
+                  (showNet ? 128.0 : 0.0) +
+                  (showGpu ? 78.0 : 0.0);
 
         Widget content = Column(
           children: [
-            _headerRow(showPid, showUser, showIo),
+            _headerRow(cols),
             Divider(height: 1, color: AppTheme.borderColor),
-            Expanded(
-              child: _buildBody(total, showPid, showUser, showIo),
-            ),
+            Expanded(child: _buildBody(total, cols)),
           ],
         );
 
         if (constraints.maxWidth < minWidth) {
           content = SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: minWidth,
-              child: content,
-            ),
+            child: SizedBox(width: minWidth, child: content),
           );
         }
 
@@ -364,24 +384,23 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
           onToggleMaximize: widget.onToggleMaximize,
           stretch: widget.expanded,
           trailing: trailing,
-          child: widget.expanded ? content : SizedBox(height: 380, child: content),
+          child: widget.expanded
+              ? content
+              : SizedBox(height: 380, child: content),
         );
       },
     );
   }
 
-  Widget _buildBody(int total, bool showPid, bool showUser, bool showIo) {
+  Widget _buildBody(int total, _ProcCols cols) {
     if (_mode == _ViewMode.group) {
       final groups = _groupRows();
       if (groups.isEmpty) return _emptyBody(total);
       return ListView.builder(
         itemCount: groups.length,
         itemExtent: 26,
-        itemBuilder: (context, i) => _GroupRow(
-          group: groups[i],
-          hasUser: showUser,
-          even: i.isEven,
-        ),
+        itemBuilder: (context, i) =>
+            _GroupRow(group: groups[i], hasUser: cols.user, even: i.isEven),
       );
     }
 
@@ -392,9 +411,7 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
       itemExtent: 26,
       itemBuilder: (context, i) => _ProcRow(
         row: rows[i],
-        showPid: showPid,
-        showUser: showUser,
-        showIo: showIo,
+        cols: cols,
         even: i.isEven,
         onKill: (force) => _kill(rows[i].proc, force: force),
         onSignal: (signal) => _sendSignal(rows[i].proc, signal),
@@ -418,7 +435,7 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
     );
   }
 
-  Widget _headerRow(bool showPid, bool showUser, bool showIo) {
+  Widget _headerRow(_ProcCols cols) {
     Widget cell(
       String label,
       _ProcSort? column, {
@@ -466,20 +483,30 @@ class _ProcessPanelState extends ConsumerState<ProcessPanel> {
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          if (grouped || showPid) ...[
-            cell(grouped ? tr('数量') : 'PID', _ProcSort.pid,
-                width: 64, numeric: true),
+          if (grouped || cols.pid) ...[
+            cell(
+              grouped ? tr('数量') : 'PID',
+              _ProcSort.pid,
+              width: 64,
+              numeric: true,
+            ),
             const SizedBox(width: 12),
           ],
           cell(tr('名称'), _ProcSort.name, flex: 1),
-          if (showUser && !grouped) cell(tr('用户'), _ProcSort.user, width: 90),
+          if (cols.user && !grouped) cell(tr('用户'), _ProcSort.user, width: 90),
           cell('CPU %', _ProcSort.cpu, width: 64, numeric: true),
           cell(tr('内存 %'), _ProcSort.mem, width: 64, numeric: true),
           cell(tr('内存'), null, width: 78, numeric: true),
-          if (showIo && !grouped) ...[
+          if (cols.io && !grouped) ...[
             cell(tr('读/s'), _ProcSort.io, width: 64, numeric: true),
             cell(tr('写/s'), _ProcSort.io, width: 64, numeric: true),
           ],
+          if (cols.net && !grouped) ...[
+            cell(tr('收/s'), _ProcSort.net, width: 64, numeric: true),
+            cell(tr('发/s'), _ProcSort.net, width: 64, numeric: true),
+          ],
+          if (cols.gpu && !grouped)
+            cell(tr('显存'), _ProcSort.gpuMem, width: 78, numeric: true),
           if (!grouped) cell(tr('状态'), null, width: 40, numeric: true),
           const SizedBox(width: 72),
         ],
@@ -534,9 +561,7 @@ class _ModeSwitch extends StatelessWidget {
 class _ProcRow extends StatefulWidget {
   const _ProcRow({
     required this.row,
-    required this.showPid,
-    required this.showUser,
-    required this.showIo,
+    required this.cols,
     required this.even,
     required this.onKill,
     required this.onSignal,
@@ -544,9 +569,7 @@ class _ProcRow extends StatefulWidget {
   });
 
   final _ProcRowData row;
-  final bool showPid;
-  final bool showUser;
-  final bool showIo;
+  final _ProcCols cols;
   final bool even;
   final void Function(bool force) onKill;
   final void Function(String signal) onSignal;
@@ -582,7 +605,7 @@ class _ProcRowState extends State<_ProcRow> {
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(
           children: [
-            if (widget.showPid) ...[
+            if (widget.cols.pid) ...[
               SizedBox(
                 width: 64,
                 child: Text(
@@ -630,7 +653,7 @@ class _ProcRowState extends State<_ProcRow> {
                 ],
               ),
             ),
-            if (widget.showUser)
+            if (widget.cols.user)
               SizedBox(
                 width: 90,
                 child: Text(
@@ -672,7 +695,7 @@ class _ProcRowState extends State<_ProcRow> {
                 style: numStyle,
               ),
             ),
-            if (widget.showIo) ...[
+            if (widget.cols.io) ...[
               SizedBox(
                 width: 64,
                 child: Text(
@@ -690,6 +713,33 @@ class _ProcRowState extends State<_ProcRow> {
                 ),
               ),
             ],
+            if (widget.cols.net) ...[
+              SizedBox(
+                width: 64,
+                child: Text(
+                  p.netRxRate == null ? '—' : fmtBytes(p.netRxRate!),
+                  textAlign: TextAlign.right,
+                  style: numStyle,
+                ),
+              ),
+              SizedBox(
+                width: 64,
+                child: Text(
+                  p.netTxRate == null ? '—' : fmtBytes(p.netTxRate!),
+                  textAlign: TextAlign.right,
+                  style: numStyle,
+                ),
+              ),
+            ],
+            if (widget.cols.gpu)
+              SizedBox(
+                width: 78,
+                child: Text(
+                  p.gpuMemBytes == null ? '—' : fmtBytes(p.gpuMemBytes!),
+                  textAlign: TextAlign.right,
+                  style: numStyle,
+                ),
+              ),
             SizedBox(
               width: 40,
               child: Text(
@@ -795,7 +845,8 @@ class _GroupRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Tooltip(
-              message: 'PID: ${group.pids.take(20).join(', ')}'
+              message:
+                  'PID: ${group.pids.take(20).join(', ')}'
                   '${group.pids.length > 20 ? ' …' : ''}',
               waitDuration: const Duration(milliseconds: 600),
               child: Text(

@@ -916,6 +916,8 @@ const Map<String, String> kAppL10nEn = {
   '显存': 'VRAM',
   '读/s': 'R/s',
   '写/s': 'W/s',
+  '收/s': 'Rx/s',
+  '发/s': 'Tx/s',
   '发送信号': 'Send signal',
   '面板布局': 'Panel layout',
   '恢复默认': 'Reset to default',

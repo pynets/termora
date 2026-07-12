@@ -529,14 +529,17 @@ class _LiveDotState extends State<_LiveDot>
         ),
       );
     }
-    return FadeTransition(
-      opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: AppTheme.successColor,
-          shape: BoxShape.circle,
+    // RepaintBoundary:呼吸动画每帧只重画这颗 8px 圆点,不连带整页。
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
+        child: Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: AppTheme.successColor,
+            shape: BoxShape.circle,
+          ),
         ),
       ),
     );

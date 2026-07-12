@@ -326,10 +326,7 @@ void _showLayoutDialog(BuildContext context) {
               TextButton.icon(
                 onPressed: controller.resetPanelLayout,
                 icon: const Icon(LucideIcons.rotateCcw, size: 13),
-                label: Text(
-                  tr('恢复默认'),
-                  style: const TextStyle(fontSize: 12),
-                ),
+                label: Text(tr('恢复默认'), style: const TextStyle(fontSize: 12)),
               ),
             ],
           ),
@@ -354,9 +351,7 @@ void _showLayoutDialog(BuildContext context) {
                         child: MouseRegion(
                           cursor: SystemMouseCursors.grab,
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             child: Icon(
                               LucideIcons.gripVertical,
                               size: 14,
@@ -515,10 +510,7 @@ class _PanelGrid extends StatelessWidget {
         }
         return Column(
           children: [
-            for (var r = 0; r < rows.length; r++) ...[
-              if (r > 0) gap,
-              rows[r],
-            ],
+            for (var r = 0; r < rows.length; r++) ...[if (r > 0) gap, rows[r]],
           ],
         );
       },

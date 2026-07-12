@@ -54,57 +54,61 @@ class MonitorPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: AppTheme.panelDecoration(),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: AppTheme.brandColor),
-              const SizedBox(width: 7),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.headingColor,
-                ),
-              ),
-              const Spacer(),
-              if (trailing != null)
-                Flexible(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: trailing!,
+    // RepaintBoundary:每 2s 一次的数据刷新只重画自己这块,
+    // 不触发整页图层重绘。
+    return RepaintBoundary(
+      child: Container(
+        decoration: AppTheme.panelDecoration(),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 14, color: AppTheme.brandColor),
+                const SizedBox(width: 7),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.headingColor,
                   ),
                 ),
-              if (onToggleMaximize != null) ...[
-                const SizedBox(width: 8),
-                Tooltip(
-                  message: maximized ? tr('还原') : tr('最大化'),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(4),
-                    onTap: onToggleMaximize,
-                    child: Padding(
-                      padding: const EdgeInsets.all(2),
-                      child: Icon(
-                        maximized
-                            ? LucideIcons.minimize2
-                            : LucideIcons.maximize2,
-                        size: 12,
-                        color: AppTheme.subtleTextColor,
+                const Spacer(),
+                if (trailing != null)
+                  Flexible(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: trailing!,
+                    ),
+                  ),
+                if (onToggleMaximize != null) ...[
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: maximized ? tr('还原') : tr('最大化'),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: onToggleMaximize,
+                      child: Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Icon(
+                          maximized
+                              ? LucideIcons.minimize2
+                              : LucideIcons.maximize2,
+                          size: 12,
+                          color: AppTheme.subtleTextColor,
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (stretch) Expanded(child: child) else child,
-        ],
+            ),
+            const SizedBox(height: 10),
+            if (stretch) Expanded(child: child) else child,
+          ],
+        ),
       ),
     );
   }
@@ -188,8 +192,7 @@ class _CpuPanelState extends State<CpuPanel> {
             label: 'C$i',
             color: kSeriesPalette[i % kSeriesPalette.length],
             values: widget.state.series(
-              (s) =>
-                  (s.cpu != null && i < s.cpu!.perCore.length)
+              (s) => (s.cpu != null && i < s.cpu!.perCore.length)
                   ? s.cpu!.perCore[i]
                   : null,
             ),
@@ -207,7 +210,10 @@ class _CpuPanelState extends State<CpuPanel> {
           if (latest != null)
             PanelCaption(
               coreCount > 0
-                  ? tr2('{0} 核 · {1}', [coreCount, fmtPercent(latest.totalUsage)])
+                  ? tr2('{0} 核 · {1}', [
+                      coreCount,
+                      fmtPercent(latest.totalUsage),
+                    ])
                   : fmtPercent(latest.totalUsage),
               color: AppTheme.headingColor,
             ),
@@ -722,9 +728,8 @@ class GpuPanel extends StatelessWidget {
                         label: gpus[i].label,
                         color: kSeriesPalette[i % kSeriesPalette.length],
                         values: state.series(
-                          (s) => i < s.gpus.length
-                              ? s.gpus[i].utilization
-                              : null,
+                          (s) =>
+                              i < s.gpus.length ? s.gpus[i].utilization : null,
                         ),
                       ),
                   ],
@@ -797,9 +802,7 @@ class TemperaturePanel extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures(),
-                            ],
+                            fontFeatures: const [FontFeature.tabularFigures()],
                             color: t.celsius >= 80
                                 ? AppTheme.errorColor
                                 : t.celsius >= 60
@@ -856,15 +859,12 @@ class BatteryPanel extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _batteryLine(
-                        tr('状态'),
-                        switch (battery.state) {
-                          BatteryState.charging => tr('充电中'),
-                          BatteryState.discharging => tr('放电中'),
-                          BatteryState.full => tr('已充满'),
-                          BatteryState.unknown => tr('未知'),
-                        },
-                      ),
+                      _batteryLine(tr('状态'), switch (battery.state) {
+                        BatteryState.charging => tr('充电中'),
+                        BatteryState.discharging => tr('放电中'),
+                        BatteryState.full => tr('已充满'),
+                        BatteryState.unknown => tr('未知'),
+                      }),
                       if (battery.timeRemaining != null)
                         _batteryLine(
                           battery.state == BatteryState.charging
