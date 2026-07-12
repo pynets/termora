@@ -191,80 +191,107 @@ class _Toolbar extends ConsumerWidget {
           bottom: BorderSide(color: AppTheme.borderColor, width: 0.5),
         ),
       ),
-      child: Row(
-        children: [
-          // 采样状态指示灯。
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: state.sampling
-                  ? AppTheme.successColor
-                  : AppTheme.subtleTextColor,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            state.paused
-                ? tr('已暂停')
-                : state.latest == null
-                ? tr('等待采样…')
-                : tr('实时采样中'),
-            style: TextStyle(fontSize: 11, color: AppTheme.subtleTextColor),
-          ),
-          const Spacer(),
-          Text(
-            tr('时间窗'),
-            style: TextStyle(fontSize: 11, color: AppTheme.subtleTextColor),
-          ),
-          const SizedBox(width: 8),
-          for (final w in _windows) ...[
-            _ToolbarChip(
-              label: w == 0 ? tr('全部') : (w < 60 ? '${w}s' : '${w ~/ 60}m'),
-              selected: state.chartWindowSeconds == w,
-              onTap: () => controller.setChartWindow(w),
-            ),
-            const SizedBox(width: 4),
-          ],
-          const SizedBox(width: 14),
-          Text(
-            tr('采样间隔'),
-            style: TextStyle(fontSize: 11, color: AppTheme.subtleTextColor),
-          ),
-          const SizedBox(width: 8),
-          for (final s in _intervals) ...[
-            _ToolbarChip(
-              label: '${s}s',
-              selected: state.intervalSeconds == s,
-              onTap: () => controller.setInterval(s),
-            ),
-            const SizedBox(width: 4),
-          ],
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: tr('面板布局'),
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              LucideIcons.layoutDashboard,
-              size: 15,
-              color: AppTheme.subtleTextColor,
-            ),
-            onPressed: () => _showLayoutDialog(context),
-          ),
-          IconButton(
-            tooltip: state.paused ? tr('继续') : tr('暂停'),
-            visualDensity: VisualDensity.compact,
-            icon: Icon(
-              state.paused ? LucideIcons.play : LucideIcons.pause,
-              size: 15,
-              color: state.paused
-                  ? AppTheme.brandColor
-                  : AppTheme.subtleTextColor,
-            ),
-            onPressed: controller.togglePaused,
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final showLabels = constraints.maxWidth >= 580;
+          return Row(
+            children: [
+              // 采样状态指示灯。
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: state.sampling
+                      ? AppTheme.successColor
+                      : AppTheme.subtleTextColor,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                state.paused
+                    ? tr('已暂停')
+                    : state.latest == null
+                    ? tr('等待采样…')
+                    : tr('实时采样中'),
+                style: TextStyle(fontSize: 11, color: AppTheme.subtleTextColor),
+              ),
+              const Spacer(),
+              Flexible(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showLabels) ...[
+                        Text(
+                          tr('时间窗'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.subtleTextColor,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      for (final w in _windows) ...[
+                        _ToolbarChip(
+                          label: w == 0
+                              ? tr('全部')
+                              : (w < 60 ? '${w}s' : '${w ~/ 60}m'),
+                          selected: state.chartWindowSeconds == w,
+                          onTap: () => controller.setChartWindow(w),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      const SizedBox(width: 14),
+                      if (showLabels) ...[
+                        Text(
+                          tr('采样间隔'),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.subtleTextColor,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      for (final s in _intervals) ...[
+                        _ToolbarChip(
+                          label: '${s}s',
+                          selected: state.intervalSeconds == s,
+                          onTap: () => controller.setInterval(s),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: tr('面板布局'),
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          LucideIcons.layoutDashboard,
+                          size: 15,
+                          color: AppTheme.subtleTextColor,
+                        ),
+                        onPressed: () => _showLayoutDialog(context),
+                      ),
+                      IconButton(
+                        tooltip: state.paused ? tr('继续') : tr('暂停'),
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          state.paused ? LucideIcons.play : LucideIcons.pause,
+                          size: 15,
+                          color: state.paused
+                              ? AppTheme.brandColor
+                              : AppTheme.subtleTextColor,
+                        ),
+                        onPressed: controller.togglePaused,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
