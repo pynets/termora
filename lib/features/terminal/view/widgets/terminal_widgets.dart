@@ -909,8 +909,8 @@ class _TerminalIconButton extends StatelessWidget {
   }
 }
 
-/// A session chip in the bottom tab bar. Tapping focuses the matching pane;
-/// long-press drags it to rearrange the split layout.
+/// A session chip in the bottom tab bar. Tapping focuses the matching pane
+/// (or restores a minimized one); long-press drags it to rearrange the layout.
 class _TerminalSessionTab extends ConsumerWidget {
   const _TerminalSessionTab({
     required this.sessionKey,
@@ -918,6 +918,7 @@ class _TerminalSessionTab extends ConsumerWidget {
     required this.isActive,
     required this.canClose,
     this.isRemote = false,
+    this.isMinimized = false,
     required this.onSelect,
     required this.onClose,
   });
@@ -927,6 +928,9 @@ class _TerminalSessionTab extends ConsumerWidget {
   final bool isActive;
   final bool canClose;
   final bool isRemote;
+
+  /// 会话已最小化(不在分屏里,仅保活):标签置灰 + 最小化角标,点击恢复
+  final bool isMinimized;
   final VoidCallback onSelect;
   final VoidCallback onClose;
 
@@ -945,12 +949,16 @@ class _TerminalSessionTab extends ConsumerWidget {
           decoration: BoxDecoration(
             color: isActive
                 ? AppTheme.softBrandColor
-                : AppTheme.subtleSurfaceColor.withValues(alpha: 0.6),
+                : AppTheme.subtleSurfaceColor.withValues(
+                    alpha: isMinimized ? 0.35 : 0.6,
+                  ),
             borderRadius: BorderRadius.circular(7),
             border: Border.all(
               color: isActive
                   ? AppTheme.brandColor.withValues(alpha: 0.4)
-                  : AppTheme.borderColor,
+                  : AppTheme.borderColor.withValues(
+                      alpha: isMinimized ? 0.6 : 1,
+                    ),
             ),
           ),
           child: Row(
@@ -976,13 +984,25 @@ class _TerminalSessionTab extends ConsumerWidget {
                       : AppTheme.subtleTextColor,
                 ),
               ],
+              if (isMinimized) ...[
+                const SizedBox(width: 6),
+                Icon(
+                  LucideIcons.minimize2300,
+                  size: 11,
+                  color: AppTheme.subtleTextColor,
+                ),
+              ],
               const SizedBox(width: 8),
               Text(
                 title,
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                  color: isActive ? AppTheme.brandColor : AppTheme.headingColor,
+                  color: isActive
+                      ? AppTheme.brandColor
+                      : (isMinimized
+                            ? AppTheme.subtleTextColor
+                            : AppTheme.headingColor),
                 ),
               ),
               if (canClose) ...[
@@ -1012,7 +1032,9 @@ class _TerminalSessionTab extends ConsumerWidget {
       data: _TerminalDragData(sessionKey),
       dragAnchorStrategy: pointerDragAnchorStrategy,
       feedback: _TerminalDragFeedback(title: title),
-      child: tab,
+      child: isMinimized
+          ? Tooltip(message: tr('已最小化,点击恢复'), child: tab)
+          : tab,
     );
   }
 }

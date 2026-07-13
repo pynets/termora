@@ -231,6 +231,10 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
   int _activePaneId = 1;
   double _fontScale = 1.0;
 
+  /// 最小化到底部标签的会话(providerKey):不占分屏,但以 Offstage
+  /// 挂在树里保活(pty/滚动缓冲不断),点标签放回分屏。
+  final Set<String> _minimizedKeys = <String>{};
+
   /// 命令广播(sync input):开启后任一分屏的输入同时发给所有会话
   bool _broadcastInput = false;
 
@@ -379,10 +383,24 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
         );
       }
       if (restored.isEmpty) return;
+      final minimizedIds = ((map['minimizedIds'] as List<dynamic>?) ?? [])
+          .whereType<int>()
+          .toSet();
       setState(() {
         _sessions = restored;
         _nextSessionId = nextId;
         _nextPaneId = nextPaneId;
+        _minimizedKeys
+          ..clear()
+          ..addAll([
+            for (final s in restored)
+              if (minimizedIds.contains(s.id)) s.providerKey,
+          ]);
+        // 分屏树只承载未最小化的会话
+        final visible = [
+          for (final s in restored)
+            if (!_minimizedKeys.contains(s.providerKey)) s,
+        ];
 
         final restoredRoot = _paneNodeFromJson(
           map['root'] as Map<String, dynamic>?,
@@ -399,19 +417,22 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
 
         collectKeys(restoredRoot);
         final allSessionsMatched =
-            restored.length == restoredLeafKeys.length &&
-            restored.every((s) => restoredLeafKeys.contains(s.providerKey));
+            visible.length == restoredLeafKeys.length &&
+            visible.every((s) => restoredLeafKeys.contains(s.providerKey));
 
         if (restoredRoot != null && allSessionsMatched) {
           _root = restoredRoot;
+        } else if (visible.isEmpty) {
+          // 全部最小化:空占位分屏,等标签点击恢复
+          _root = _PaneLeaf(id: 1, sessionKey: '');
         } else {
           // Rebuild pane tree with equal ratio distribution so all tabs have uniform width.
-          _root = _PaneLeaf(id: 1, sessionKey: _sessions.first.providerKey);
+          _root = _PaneLeaf(id: 1, sessionKey: visible.first.providerKey);
           var paneId = 2;
-          for (var i = 1; i < _sessions.length; i++) {
+          for (var i = 1; i < visible.length; i++) {
             final newLeaf = _PaneLeaf(
               id: paneId,
-              sessionKey: _sessions[i].providerKey,
+              sessionKey: visible[i].providerKey,
             );
             final branch = _PaneBranch(
               axis: Axis.horizontal,
@@ -456,6 +477,10 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
             },
         ],
         'root': _paneNodeToJson(_root),
+        'minimizedIds': [
+          for (final s in _sessions)
+            if (_minimizedKeys.contains(s.providerKey)) s.id,
+        ],
         'activeSessionId': activeDesc?.id ?? 1,
         'nextSessionId': _nextSessionId,
         'nextPaneId': _nextPaneId,
@@ -634,17 +659,65 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
   }
 
   void _selectSession(String providerKey) {
+    // 最小化的会话:点标签放回分屏
+    if (_minimizedKeys.contains(providerKey)) {
+      _restoreSession(providerKey);
+      return;
+    }
     // Sessions map 1:1 to visible panes, so selecting simply focuses the
     // matching pane — it never evicts the terminal already shown elsewhere.
     final existing = _leafShowing(providerKey);
     if (existing != null) _activatePane(existing.id);
   }
 
+  /// 把分屏最小化到底部标签:会话保活(Offstage 继续挂着 pty),
+  /// 只从分屏树里摘掉;点标签恢复。
+  void _minimizePane(int paneId) {
+    final leaf = _leafById(paneId);
+    if (leaf == null || leaf.sessionKey.isEmpty) return;
+    setState(() {
+      _minimizedKeys.add(leaf.sessionKey);
+      final next = _removeLeaf(_root, paneId);
+      // 最后一个分屏也可以最小化:留一个空占位,等标签点击恢复
+      _root = next ?? _PaneLeaf(id: _nextPaneId++, sessionKey: '');
+      _ensureActiveLeaf();
+    });
+    unawaited(_saveSessions());
+  }
+
+  /// 恢复最小化的会话:优先占用空占位分屏,否则在活动分屏右侧展开
+  void _restoreSession(String providerKey) {
+    if (!_minimizedKeys.contains(providerKey)) return;
+    setState(() {
+      _minimizedKeys.remove(providerKey);
+      final placeholder = _leafShowing('');
+      if (placeholder != null) {
+        placeholder.sessionKey = providerKey;
+        _activePaneId = placeholder.id;
+        return;
+      }
+      final active = _activeLeaf();
+      final newLeaf = _PaneLeaf(id: _nextPaneId++, sessionKey: providerKey);
+      if (active == null) {
+        _root = newLeaf;
+      } else {
+        _root = _replaceLeafWithBranch(
+          _root,
+          active.id,
+          Axis.horizontal,
+          newLeaf,
+        );
+      }
+      _activePaneId = newLeaf.id;
+    });
+    unawaited(_saveSessions());
+  }
+
   void _addSession({_TerminalSessionDescriptor? descriptor}) {
     // A new session always opens as its own card (a split of the active pane),
     // so it never displaces an existing terminal.
     final leaf = _sessions.isEmpty ? null : _activeLeaf();
-    if (leaf == null || _sessions.isEmpty) {
+    if (leaf == null || _sessions.isEmpty || leaf.sessionKey.isEmpty) {
       final activeDesc = _descriptorFor(_activeSessionKey ?? '');
       final inheritedCwd = activeDesc?.lastKnownCwd ?? activeDesc?.initialCwd;
       final newDescriptor =
@@ -654,14 +727,20 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
             keyPrefix: widget.sessionPrefix,
             initialCwd: inheritedCwd,
           );
-      final newLeaf = _PaneLeaf(
-        id: _nextPaneId++,
-        sessionKey: newDescriptor.providerKey,
-      );
       setState(() {
         _sessions.add(newDescriptor);
-        _root = newLeaf;
-        _activePaneId = newLeaf.id;
+        if (leaf != null && leaf.sessionKey.isEmpty) {
+          // 活动分屏是空占位(其余会话都最小化了):直接占用
+          leaf.sessionKey = newDescriptor.providerKey;
+          _activePaneId = leaf.id;
+        } else {
+          final newLeaf = _PaneLeaf(
+            id: _nextPaneId++,
+            sessionKey: newDescriptor.providerKey,
+          );
+          _root = newLeaf;
+          _activePaneId = newLeaf.id;
+        }
       });
       unawaited(_saveSessions());
       return;
@@ -727,6 +806,7 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
     if (_descriptorFor(providerKey) == null) return;
     unawaited(_removeSessionHistory(providerKey));
     setState(() {
+      _minimizedKeys.remove(providerKey);
       _sessions.removeWhere((session) => session.providerKey == providerKey);
       if (_sessions.isEmpty) {
         _root = _PaneLeaf(id: 1, sessionKey: '');
@@ -736,7 +816,12 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
       final leaf = _leafShowing(providerKey);
       if (leaf != null) {
         if (_root is _PaneLeaf) {
-          leaf.sessionKey = _sessions.first.providerKey;
+          // 剩下的会话可能都在最小化:只把未最小化的填回分屏,
+          // 否则留空占位(最小化的仍以 Offstage 保活)
+          final visible = _sessions.where(
+            (s) => !_minimizedKeys.contains(s.providerKey),
+          );
+          leaf.sessionKey = visible.isEmpty ? '' : visible.first.providerKey;
         } else {
           final next = _removeLeaf(_root, leaf.id);
           if (next != null) _root = next;
@@ -783,7 +868,10 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
   }
 
   void _closePane(int paneId) {
-    if (_root is _PaneLeaf && !widget.remoteWorkspace) return;
+    // 仅剩一个分屏且没有最小化的会话可退路时,本地终端页保底不关
+    if (_root is _PaneLeaf && _sessions.length <= 1 && !widget.remoteWorkspace) {
+      return;
+    }
     final leaf = _leafById(paneId);
     if (leaf != null) {
       unawaited(_removeSessionHistory(leaf.sessionKey));
@@ -799,7 +887,8 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
         return;
       }
       final next = _removeLeaf(_root, paneId);
-      if (next != null) _root = next;
+      // 树被摘空(其余会话都在最小化):留空占位
+      _root = next ?? _PaneLeaf(id: _nextPaneId++, sessionKey: '');
       _ensureActiveLeaf();
     });
     unawaited(_saveSessions());
@@ -858,6 +947,11 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
           targetLeaf.sessionKey = sourceLeaf.sessionKey;
           sourceLeaf.sessionKey = swapped;
         } else {
+          // 拖的是最小化的会话:它放大到目标分屏,原会话退到标签保活
+          if (targetLeaf.sessionKey.isNotEmpty) {
+            _minimizedKeys.add(targetLeaf.sessionKey);
+          }
+          _minimizedKeys.remove(sessionKey);
           targetLeaf.sessionKey = sessionKey;
         }
         _activePaneId = targetPaneId;
@@ -876,6 +970,8 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
         final next = _removeLeaf(_root, sourcePaneId);
         if (next != null) _root = next;
       }
+      // 最小化的会话被拖成新分屏 = 恢复
+      _minimizedKeys.remove(sessionKey);
       final newLeaf = _PaneLeaf(id: _nextPaneId++, sessionKey: sessionKey);
       _root = _insertSplit(_root, targetPaneId, axis, newLeaf, newLeafFirst);
       _activePaneId = newLeaf.id;
@@ -949,6 +1045,9 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
                         canClose:
                             widget.remoteWorkspace || _sessions.length > 1,
                         isRemote: descriptor.isRemote,
+                        isMinimized: _minimizedKeys.contains(
+                          descriptor.providerKey,
+                        ),
                         onSelect: () => _selectSession(descriptor.providerKey),
                         onClose: () => _closeSession(descriptor.providerKey),
                       ),
@@ -997,10 +1096,29 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
         ),
       );
     }
-    // Every session maps 1:1 to a visible pane, so the tree renders them all.
+    // Every non-minimized session maps 1:1 to a visible pane. Minimized
+    // sessions stay mounted offstage (same GlobalKey) so their pty keeps
+    // running; restoring simply reparents the live state back into the tree.
     return Container(
       color: AppTheme.surfaceColor,
-      child: _buildPaneNode(_root),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildPaneNode(_root),
+          for (final descriptor in _sessions)
+            if (_minimizedKeys.contains(descriptor.providerKey))
+              Offstage(
+                child: TickerMode(
+                  enabled: false,
+                  child: _buildSessionHost(
+                    descriptor,
+                    isActive: false,
+                    leaf: null,
+                  ),
+                ),
+              ),
+        ],
+      ),
     );
   }
 
@@ -1059,7 +1177,29 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
 
   Widget _buildPaneLeaf(_PaneLeaf leaf) {
     final descriptor = _descriptorFor(leaf.sessionKey);
-    if (descriptor == null) return const SizedBox.shrink();
+    if (descriptor == null) {
+      // 空占位分屏(会话都最小化了):提示从底部标签恢复
+      if (_minimizedKeys.isNotEmpty) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                LucideIcons.minimize2300,
+                size: 36,
+                color: AppTheme.subtleTextColor.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                tr('会话已最小化,点击下方标签恢复'),
+                style: TextStyle(fontSize: 13, color: AppTheme.subtleTextColor),
+              ),
+            ],
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    }
     final isActive = leaf.id == _activePaneId;
     return _PaneDropTarget(
       paneId: leaf.id,
@@ -1074,7 +1214,8 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
     required _PaneLeaf? leaf,
   }) {
     final canClosePane =
-        leaf != null && (_paneCount > 1 || widget.remoteWorkspace);
+        leaf != null &&
+        (_paneCount > 1 || _sessions.length > 1 || widget.remoteWorkspace);
     return _TerminalSessionView(
       key: descriptor.viewKey,
       sessionId: descriptor.providerKey,
@@ -1117,6 +1258,7 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
           : () => _splitPane(leaf.id, Axis.vertical),
       canClosePane: canClosePane,
       onClosePane: canClosePane ? () => _closePane(leaf.id) : null,
+      onMinimizePane: leaf == null ? null : () => _minimizePane(leaf.id),
       onZoomIn: () => _zoomBy(1),
       onZoomOut: () => _zoomBy(-1),
       onZoomReset: _resetZoom,
@@ -1388,6 +1530,7 @@ class _TerminalSessionView extends ConsumerStatefulWidget {
     required this.onSplitVertical,
     required this.canClosePane,
     required this.onClosePane,
+    this.onMinimizePane,
     required this.onZoomIn,
     required this.onZoomOut,
     required this.onZoomReset,
@@ -1447,6 +1590,9 @@ class _TerminalSessionView extends ConsumerStatefulWidget {
   final VoidCallback? onSplitVertical;
   final bool canClosePane;
   final VoidCallback? onClosePane;
+
+  /// 最小化到底部标签(会话保活);null 表示该视图当前不在分屏树里
+  final VoidCallback? onMinimizePane;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
   final VoidCallback onZoomReset;
@@ -1747,6 +1893,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         : _initialWorkingDirectory;
     _scrollController.addListener(_handleScrollChanged);
     FocusManager.instance.addListener(_handleGlobalFocusChange);
+    unawaited(_resolveLoginShellPath());
     _resetSession();
     _publishUiState();
     unawaited(_loadHistory());
@@ -4498,16 +4645,56 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     return ['-c', command];
   }
 
+  /// GUI 启动的 App 只从 launchd 继承最小 PATH:/etc/paths.d(如 go)和
+  /// 用户 rc 文件里追加的目录全都缺席,内置终端会莫名找不到命令。仿
+  /// VS Code 用「登录 + 交互」shell 解析一次真实 PATH,所有会话复用;
+  /// 解析失败(超时/异常)就退回 _processEnvironment 手拼的兜底列表。
+  static String? _loginShellPath;
+  static Future<void>? _loginShellPathResolve;
+
+  static Future<void> _resolveLoginShellPath() {
+    return _loginShellPathResolve ??= () async {
+      if (Platform.isWindows) return;
+      final shell = Platform.environment['SHELL'] ?? '/bin/zsh';
+      // rc 文件可能往 stdout 打招呼语,用标记行把 PATH 捞出来
+      const marker = '__TERMORA_LOGIN_PATH__';
+      try {
+        final result = await Process.run(shell, [
+          '-l',
+          '-i',
+          '-c',
+          'printf "\\n$marker%s\\n" "\$PATH"',
+        ]).timeout(const Duration(seconds: 5));
+        final stdout = result.stdout;
+        if (result.exitCode != 0 || stdout is! String) return;
+        for (final line in stdout.split('\n').reversed) {
+          final index = line.lastIndexOf(marker);
+          if (index < 0) continue;
+          final path = line.substring(index + marker.length).trim();
+          if (path.isNotEmpty) _loginShellPath = path;
+          return;
+        }
+      } catch (_) {
+        // 拿不到就用兜底列表,不影响使用
+      }
+    }();
+  }
+
   Map<String, String> get _processEnvironment {
     final currentPath = Platform.environment['PATH'] ?? '';
     final home = _homeDirectoryPath;
+    final loginPath = _loginShellPath ?? '';
     final pathEntries = <String>[
+      // 登录 shell 的真实 PATH 优先,保留用户自己的目录顺序
+      if (loginPath.isNotEmpty) loginPath,
       if (home != null) '$home/.local/bin',
       if (home != null) '$home/go/bin',
       '/opt/homebrew/bin',
       '/opt/homebrew/sbin',
       '/usr/local/bin',
       '/usr/local/sbin',
+      // /etc/paths.d/go 只在登录 shell 生效,GUI 环境下手动兜底
+      '/usr/local/go/bin',
       '/usr/bin',
       '/bin',
       '/usr/sbin',
@@ -5243,6 +5430,14 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                 ghost: !_sessionLogger.isActive,
                 onPressed: () => unawaited(_toggleSessionLog()),
               ),
+              if (widget.onMinimizePane != null) ...[
+                const SizedBox(width: 2),
+                _toolbarButton(
+                  tr('最小化到标签'),
+                  LucideIcons.minimize2300,
+                  widget.onMinimizePane,
+                ),
+              ],
               if (widget.canClosePane) ...[
                 const SizedBox(width: 2),
                 _toolbarButton(
