@@ -606,6 +606,68 @@ WHERE tablename = 'fid_users' ORDER BY indexname""");
     await _runAll(_pgTarget, ['DROP TABLE IF EXISTS fid_users']);
   });
 
+  test('迁移 pg → pg:生成列(GENERATED STORED)重建并自动重算', () async {
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS gen_items',
+      '''
+CREATE TABLE gen_items (
+  id bigint PRIMARY KEY,
+  price numeric NOT NULL,
+  qty integer NOT NULL,
+  total numeric GENERATED ALWAYS AS (price * qty) STORED
+)''',
+      'INSERT INTO gen_items (id, price, qty) '
+          'SELECT i, i * 1.5, i FROM generate_series(1, 25) i',
+    ]);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS gen_items']);
+
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schema: 'public',
+      tables: ['gen_items'],
+    );
+    expect(summary.rows, 25);
+
+    // 目标端列确实是生成列
+    expect(
+      (await _query(_pgTarget, """
+SELECT attgenerated FROM pg_attribute
+WHERE attrelid = 'gen_items'::regclass AND attname = 'total'""")).first.first,
+      's',
+    );
+    // 已迁数据的生成值正确(目标端重算 = 源值)
+    expect(
+      (await _query(
+        _pgTarget,
+        'SELECT count(*) FROM gen_items WHERE total <> price * qty',
+      )).first.first,
+      0,
+    );
+    expect(
+      (await _query(
+        _pgTarget,
+        'SELECT total FROM gen_items WHERE id = 4',
+      )).first.first,
+      isNotNull,
+    );
+    // 新插入自动计算
+    await _run(
+      _pgTarget,
+      'INSERT INTO gen_items (id, price, qty) VALUES (99, 10, 3)',
+    );
+    expect(
+      (await _query(
+        _pgTarget,
+        'SELECT total::text FROM gen_items WHERE id = 99',
+      )).first.first,
+      '30',
+    );
+
+    await _runAll(_pgSource, ['DROP TABLE IF EXISTS gen_items']);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS gen_items']);
+  });
+
   test('迁移 pg → pg:外键 + CHECK(子表排序在父表前也不怕)', () async {
     await _runAll(_pgSource, [
       'DROP TABLE IF EXISTS a_orders', // 名字排在父表前,考验建表顺序无关性

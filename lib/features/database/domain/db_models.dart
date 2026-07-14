@@ -150,16 +150,23 @@ class DbColumnInfo {
     this.defaultValue,
     this.isPrimaryKey = false,
     this.comment,
+    this.isGenerated = false,
   });
 
   final String name;
   final String dataType;
   final bool nullable;
+
+  /// 默认值表达式;生成列时是生成表达式(pg GENERATED … AS 的括号内)
   final String? defaultValue;
   final bool isPrimaryKey;
 
   /// 列注释(COMMENT ON COLUMN)
   final String? comment;
+
+  /// 生成列(pg GENERATED ALWAYS AS … STORED):不能 INSERT,
+  /// 表达式在 [defaultValue]
+  final bool isGenerated;
 }
 
 /// 表的索引定义

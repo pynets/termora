@@ -236,6 +236,9 @@ class DbTransferService {
             targetEngine,
             columns,
           );
+          final generatedCols = rule == null
+              ? _generatedColumns(source.engine, targetEngine, structure)
+              : const <String>{};
           totalRows += await _forEachBatch(
             conn,
             srcSchema,
@@ -243,9 +246,15 @@ class DbTransferService {
             rule?.rowFilters ?? const [],
             isCancelled,
             (columnNames, rows) async {
-              final (outColumns, outRows) = rule == null
+              var (outColumns, outRows) = rule == null
                   ? (columnNames, rows)
                   : rule.applyToBatch(columnNames, rows);
+              // 生成列目标端自动计算,不参与 INSERT
+              (outColumns, outRows) = _dropColumns(
+                outColumns,
+                outRows,
+                generatedCols,
+              );
               sink!.writeln(
                 '${DbMigration.buildInsert(targetEngine, targetTable, outColumns, outRows, schema: targetSchema, columnTypes: [
                   for (final c in outColumns) typeByName[c] ?? '',
@@ -483,6 +492,9 @@ class DbTransferService {
             target.engine,
             columns,
           );
+          final generatedCols = rule == null
+              ? _generatedColumns(source.engine, target.engine, structure)
+              : const <String>{};
           var tableRows = 0;
           await _forEachBatch(
             sourceConn,
@@ -491,9 +503,15 @@ class DbTransferService {
             rule?.rowFilters ?? const [],
             isCancelled,
             (columnNames, rows) async {
-              final (outColumns, outRows) = rule == null
+              var (outColumns, outRows) = rule == null
                   ? (columnNames, rows)
                   : rule.applyToBatch(columnNames, rows);
+              // 生成列目标端自动计算,不参与 INSERT
+              (outColumns, outRows) = _dropColumns(
+                outColumns,
+                outRows,
+                generatedCols,
+              );
               await DbService.runSql(
                 targetConn,
                 DbMigration.buildInsert(
@@ -636,6 +654,44 @@ class DbTransferService {
   static bool _isExtensionTable(String schema, String table) =>
       table == 'spatial_ref_sys' ||
       (schema == 'topology' && (table == 'topology' || table == 'layer'));
+
+  /// pg→pg 时需从 INSERT 中剔除的生成列(目标端 GENERATED,不可插入)。
+  /// 其余场景(跨引擎/ETL 改造)生成列降级为普通列,数据照搬。
+  static Set<String> _generatedColumns(
+    DbEngine sourceEngine,
+    DbEngine targetEngine,
+    DbTableStructure structure,
+  ) {
+    if (sourceEngine != DbEngine.postgres ||
+        targetEngine != DbEngine.postgres) {
+      return const {};
+    }
+    return {
+      for (final c in structure.columns)
+        if (c.isGenerated) c.name,
+    };
+  }
+
+  /// 从批次中剔除指定列
+  static (List<String>, List<List<Object?>>) _dropColumns(
+    List<String> columns,
+    List<List<Object?>> rows,
+    Set<String> excluded,
+  ) {
+    if (excluded.isEmpty || !columns.any(excluded.contains)) {
+      return (columns, rows);
+    }
+    final keep = [
+      for (var i = 0; i < columns.length; i++)
+        if (!excluded.contains(columns[i])) i,
+    ];
+    return (
+      [for (final i in keep) columns[i]],
+      [
+        for (final row in rows) [for (final i in keep) row[i]],
+      ],
+    );
+  }
 
   /// 目标列名 → 目标列类型(INSERT 字面量需要类型感知,如 pg 数组列)
   static Map<String, String> _targetTypesByName(

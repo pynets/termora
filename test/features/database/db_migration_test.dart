@@ -646,6 +646,43 @@ void main() {
     });
   });
 
+  group('生成列(GENERATED ALWAYS AS … STORED)', () {
+    const gen = DbMigrationColumn(
+      name: 'total',
+      sourceType: 'numeric',
+      generic: DbGenericType.decimal,
+      nullable: true,
+      isPrimaryKey: false,
+      defaultValue: '(price * qty)',
+      isGenerated: true,
+    );
+
+    test('pg→pg:重建生成性,不出 DEFAULT(修 0A000)', () {
+      final ddl = DbMigration.buildCreateTable(
+        DbEngine.postgres,
+        DbEngine.postgres,
+        't',
+        const [gen],
+        drop: false,
+      ).first;
+      expect(ddl, contains('GENERATED ALWAYS AS ((price * qty)) STORED'));
+      expect(ddl, isNot(contains('DEFAULT')));
+    });
+
+    test('跨引擎:降级为普通列,生成表达式不出 DEFAULT', () {
+      final ddl = DbMigration.buildCreateTable(
+        DbEngine.postgres,
+        DbEngine.sqlite,
+        't',
+        const [gen],
+        drop: false,
+      ).first;
+      expect(ddl, isNot(contains('GENERATED')));
+      expect(ddl, isNot(contains('DEFAULT')));
+      expect(ddl, contains('"total" NUMERIC'));
+    });
+  });
+
   group('外键 / CHECK 约束', () {
     const fk = DbConstraintInfo(
       name: 'orders_uid_fkey',
