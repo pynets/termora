@@ -287,6 +287,47 @@ class SqliteService {
       [table],
     );
 
+    // 外键:pragma_foreign_key_list 按 id 分组重建约束体
+    final constraints = <DbConstraintInfo>[];
+    try {
+      final fkRows = db.select(
+        'SELECT id, seq, "table", "from", "to", on_update, on_delete '
+        'FROM pragma_foreign_key_list(?1, ?2) ORDER BY id, seq',
+        [table, schema],
+      );
+      final grouped = <int, List<List<Object?>>>{};
+      for (final row in fkRows.rows) {
+        grouped.putIfAbsent((row[0] as num).toInt(), () => []).add(row);
+      }
+      for (final entry in grouped.entries) {
+        final rows = entry.value;
+        final refTable = rows.first[2] as String;
+        final fromCols = [for (final r in rows) _ident(r[3] as String)];
+        final toCols = [
+          for (final r in rows)
+            if (r[4] != null) _ident(r[4] as String),
+        ];
+        final onUpdate = rows.first[5] as String? ?? 'NO ACTION';
+        final onDelete = rows.first[6] as String? ?? 'NO ACTION';
+        var def =
+            'FOREIGN KEY (${fromCols.join(', ')}) '
+            'REFERENCES ${_ident(refTable)}';
+        if (toCols.length == fromCols.length) {
+          def += ' (${toCols.join(', ')})';
+        }
+        if (onDelete != 'NO ACTION') def += ' ON DELETE $onDelete';
+        if (onUpdate != 'NO ACTION') def += ' ON UPDATE $onUpdate';
+        constraints.add(
+          DbConstraintInfo(
+            name: 'fk_${table}_${entry.key}',
+            type: DbConstraintType.foreignKey,
+            definition: def,
+            refTable: refTable,
+          ),
+        );
+      }
+    } catch (_) {}
+
     var approxRows = 0;
     try {
       approxRows = (db
@@ -327,6 +368,7 @@ class SqliteService {
             definition: row[1] as String? ?? tr('(自动索引)'),
           ),
       ],
+      constraints: constraints,
       approxRows: approxRows,
       totalBytes: totalBytes,
     );

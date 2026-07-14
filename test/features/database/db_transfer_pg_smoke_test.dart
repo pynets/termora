@@ -472,6 +472,203 @@ WHERE c.relname = 'vec_chunks' AND attname = 'embedding'""")).first.first,
     await _runAll(_pgTarget, ['DROP TABLE IF EXISTS vec_chunks']);
   });
 
+  test('迁移 pg → pg:time/interval/point/range 等驱动特有类型', () async {
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS typ_misc',
+      '''
+CREATE TABLE typ_misc (
+  id bigint PRIMARY KEY,
+  t time,
+  iv interval,
+  pt point,
+  ir int4range,
+  tr tstzrange
+)''',
+      """
+INSERT INTO typ_misc VALUES
+  (1, '14:00:00',        '2 days 03:04:05',  '(1.5,-2.5)', '[1,10)',
+      '[2026-01-01 08:00+00, 2026-01-02 08:00+00)'),
+  (2, '23:59:59.123456', '1 mon 15 days',    '(0,0)',      'empty',
+      NULL),
+  (3, NULL,              NULL,               NULL,         NULL,
+      NULL)""",
+    ]);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS typ_misc']);
+
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schema: 'public',
+      tables: ['typ_misc'],
+    );
+    expect(summary.rows, 3);
+
+    // 逐列以 ::text 对比源/目标(值语义一致)
+    const probe = '''
+SELECT id, t::text, iv::text, pt::text, ir::text, tr::text
+FROM typ_misc ORDER BY id''';
+    final src = await _query(_pgSource, probe);
+    final dst = await _query(_pgTarget, probe);
+    expect(dst.length, src.length);
+    for (var i = 0; i < src.length; i++) {
+      expect(dst[i], src[i], reason: 'id=${src[i][0]} 行不一致');
+    }
+
+    await _runAll(_pgSource, ['DROP TABLE IF EXISTS typ_misc']);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS typ_misc']);
+  });
+
+  test('迁移 pg → pg:默认值(serial→IDENTITY)/ 注释 / 二级索引', () async {
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS fid_users',
+      '''
+CREATE TABLE fid_users (
+  id serial PRIMARY KEY,
+  email text NOT NULL,
+  status text DEFAULT 'active',
+  score numeric DEFAULT 10.5,
+  created_at timestamptz DEFAULT now()
+)''',
+      'CREATE UNIQUE INDEX fid_users_email_key ON fid_users (email)',
+      'CREATE INDEX idx_fid_users_status ON fid_users (status)',
+      "COMMENT ON TABLE fid_users IS '用户表'",
+      "COMMENT ON COLUMN fid_users.email IS '邮箱,唯一'",
+      "INSERT INTO fid_users (email) SELECT 'u' || i || '@x.com' "
+          'FROM generate_series(1, 20) i',
+    ]);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS fid_users']);
+
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schema: 'public',
+      tables: ['fid_users'],
+    );
+    expect(summary.rows, 20);
+
+    // 默认值:status/score/created_at 落到目标列定义
+    final defs = await _query(_pgTarget, """
+SELECT column_name, column_default FROM information_schema.columns
+WHERE table_name = 'fid_users' ORDER BY ordinal_position""");
+    final defByName = {for (final r in defs) r[0]: '${r[1]}'};
+    expect(defByName['status'], contains("'active'"));
+    expect(defByName['score'], contains('10.5'));
+    expect(defByName['created_at'], contains('now()'));
+
+    // serial → IDENTITY:不带默认值插入能自增,且从已迁数据之后继续
+    await _run(_pgTarget, """
+SELECT setval(pg_get_serial_sequence('fid_users', 'id'),
+              (SELECT max(id) FROM fid_users))""");
+    await _run(
+      _pgTarget,
+      "INSERT INTO fid_users (email) VALUES ('new@x.com')",
+    );
+    expect(
+      (await _query(
+        _pgTarget,
+        "SELECT id > 20, status FROM fid_users WHERE email = 'new@x.com'",
+      )).first,
+      [true, 'active'], // 自增生效 + 默认值生效
+    );
+
+    // 注释迁过来了
+    expect(
+      (await _query(
+        _pgTarget,
+        "SELECT obj_description('fid_users'::regclass)",
+      )).first.first,
+      '用户表',
+    );
+    expect(
+      (await _query(_pgTarget, """
+SELECT col_description('fid_users'::regclass,
+  (SELECT attnum FROM pg_attribute
+   WHERE attrelid = 'fid_users'::regclass AND attname = 'email'))""")).first.first,
+      '邮箱,唯一',
+    );
+
+    // 二级索引迁过来了(唯一索引约束生效)
+    final idx = await _query(_pgTarget, """
+SELECT indexname FROM pg_indexes
+WHERE tablename = 'fid_users' ORDER BY indexname""");
+    final names = [for (final r in idx) r[0]];
+    expect(names, contains('fid_users_email_key'));
+    expect(names, contains('idx_fid_users_status'));
+    await expectLater(
+      _run(
+        _pgTarget,
+        "INSERT INTO fid_users (email) VALUES ('u1@x.com')", // 撞唯一索引
+      ),
+      throwsA(anything),
+    );
+
+    await _runAll(_pgSource, ['DROP TABLE IF EXISTS fid_users']);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS fid_users']);
+  });
+
+  test('迁移 pg → pg:外键 + CHECK(子表排序在父表前也不怕)', () async {
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS a_orders', // 名字排在父表前,考验建表顺序无关性
+      'DROP TABLE IF EXISTS z_users',
+      'CREATE TABLE z_users (id bigint PRIMARY KEY, name text)',
+      '''
+CREATE TABLE a_orders (
+  id bigint PRIMARY KEY,
+  uid bigint NOT NULL REFERENCES z_users(id) ON DELETE CASCADE,
+  amount numeric CHECK (amount > 0)
+)''',
+      'INSERT INTO z_users SELECT i, \'u\' || i FROM generate_series(1, 10) i',
+      'INSERT INTO a_orders SELECT i, (i % 10) + 1, i * 1.5 '
+          'FROM generate_series(1, 30) i',
+    ]);
+    await _runAll(_pgTarget, [
+      'DROP TABLE IF EXISTS a_orders',
+      'DROP TABLE IF EXISTS z_users',
+    ]);
+
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schemaTables: const {'public': ['a_orders', 'z_users']},
+    );
+    expect(summary.rows, 40);
+
+    // 外键真实生效:引用不存在的 uid 报错;级联删除生效
+    await expectLater(
+      _run(_pgTarget, 'INSERT INTO a_orders VALUES (99, 424242, 1)'),
+      throwsA(anything),
+    );
+    await _run(_pgTarget, 'DELETE FROM z_users WHERE id = 2');
+    expect(
+      (await _query(
+        _pgTarget,
+        'SELECT count(*) FROM a_orders WHERE uid = 2',
+      )).first.first,
+      0, // 级联删掉
+    );
+    // CHECK 生效
+    await expectLater(
+      _run(_pgTarget, 'INSERT INTO a_orders VALUES (98, 1, -5)'),
+      throwsA(anything),
+    );
+    // 约束名保留
+    expect(
+      (await _query(_pgTarget, """
+SELECT count(*) FROM pg_constraint
+WHERE conrelid = 'a_orders'::regclass AND contype IN ('f', 'c')""")).first.first,
+      2,
+    );
+
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS a_orders',
+      'DROP TABLE IF EXISTS z_users',
+    ]);
+    await _runAll(_pgTarget, [
+      'DROP TABLE IF EXISTS a_orders',
+      'DROP TABLE IF EXISTS z_users',
+    ]);
+  });
+
   test('迁移 pg → pg:同引擎类型保真 + 覆盖', () async {
     final summary = await DbTransferService.migrate(
       source: _pgSource,

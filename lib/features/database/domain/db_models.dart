@@ -170,11 +170,35 @@ class DbIndexInfo {
   final String definition;
 }
 
+/// 表级约束类型(结构读取 + 迁移用)
+enum DbConstraintType { foreignKey, check }
+
+/// 表级约束(外键 / CHECK)。[definition] 是源引擎方言的约束体,
+/// 如 `FOREIGN KEY (uid) REFERENCES users(id) ON DELETE CASCADE`。
+class DbConstraintInfo {
+  const DbConstraintInfo({
+    required this.name,
+    required this.type,
+    required this.definition,
+    this.refSchema,
+    this.refTable,
+  });
+
+  final String name;
+  final DbConstraintType type;
+  final String definition;
+
+  /// 外键引用的目标(迁移时重写 REFERENCES 用)
+  final String? refSchema;
+  final String? refTable;
+}
+
 /// 表结构(结构面板)
 class DbTableStructure {
   const DbTableStructure({
     this.columns = const [],
     this.indexes = const [],
+    this.constraints = const [],
     this.approxRows = 0,
     this.totalBytes = 0,
     this.comment,
@@ -182,6 +206,9 @@ class DbTableStructure {
 
   final List<DbColumnInfo> columns;
   final List<DbIndexInfo> indexes;
+
+  /// 外键 / CHECK 约束(pg/sqlite 抓取;CH 无此概念)
+  final List<DbConstraintInfo> constraints;
 
   /// pg_class.reltuples 的行数估计(-1 表示从未 analyze)
   final int approxRows;

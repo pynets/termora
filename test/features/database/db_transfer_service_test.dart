@@ -31,9 +31,10 @@ CREATE TABLE users (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   bio TEXT,
-  score REAL,
+  score REAL DEFAULT 0.5,
   avatar BLOB
 );
+CREATE INDEX idx_users_name ON users (name);
 CREATE TABLE empty_table (id INTEGER PRIMARY KEY, v TEXT);
 ''');
     final insert = source.prepare(
@@ -101,6 +102,34 @@ CREATE TABLE empty_table (id INTEGER PRIMARY KEY, v TEXT);
     expect(summary.rows, 450);
     verifyUsers(targetPath);
     expect(log, isNotEmpty);
+
+    // 默认值与二级索引也迁过来了
+    final db = sqlite3.open(targetPath);
+    try {
+      final ddl = db
+          .select(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'",
+          )
+          .first
+          .values
+          .first as String;
+      expect(ddl, contains('DEFAULT 0.5'));
+      expect(
+        db.select(
+          "SELECT count(*) FROM sqlite_master "
+          "WHERE type='index' AND name='idx_users_name'",
+        ).first.values.first,
+        1,
+      );
+      // 不带 score 插入 → 默认值生效
+      db.execute("INSERT INTO users (id, name) VALUES (9999, 'x')");
+      expect(
+        db.select('SELECT score FROM users WHERE id = 9999').first.values.first,
+        0.5,
+      );
+    } finally {
+      db.close();
+    }
 
     // 再迁一次(目标已有同名表)→ 覆盖后数据不重复
     final again = await DbTransferService.migrate(
@@ -180,8 +209,8 @@ CREATE TABLE empty_table (id INTEGER PRIMARY KEY, v TEXT);
       target: config('dst', targetPath),
       script: script,
     );
-    // DROP + CREATE + 3 批 INSERT(450 行 / 每批 200)
-    expect(imported.statements, 5);
+    // DROP + CREATE + 索引 + 3 批 INSERT(450 行 / 每批 200)
+    expect(imported.statements, 6);
     verifyUsers(targetPath);
   });
 
@@ -254,6 +283,52 @@ CREATE TABLE empty_table (id INTEGER PRIMARY KEY, v TEXT);
     expect(script, contains('CREATE TABLE "empty_table"'));
     // sqlite 方言不产生 CREATE SCHEMA
     expect(script, isNot(contains('CREATE SCHEMA')));
+  });
+
+  test('migrate: sqlite 外键内联迁移并可强制生效', () async {
+    final seed = sqlite3.open(sourcePath);
+    seed.execute('''
+CREATE TABLE orders (
+  id INTEGER PRIMARY KEY,
+  uid INTEGER REFERENCES users(id) ON DELETE CASCADE
+);
+INSERT INTO orders VALUES (1, 1), (2, 2);
+''');
+    seed.close();
+
+    await DbTransferService.migrate(
+      source: config('src', sourcePath),
+      target: config('dst', targetPath),
+      wholeDatabase: true,
+    );
+
+    final db = sqlite3.open(targetPath);
+    try {
+      // FK 进了建表 DDL
+      final ddl = db
+          .select(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'",
+          )
+          .first
+          .values
+          .first as String;
+      expect(ddl.toUpperCase(), contains('FOREIGN KEY'));
+      expect(ddl.toUpperCase(), contains('ON DELETE CASCADE'));
+
+      // 开启强制后约束真实生效:引用不存在的 uid 报错;级联删除生效
+      db.execute('PRAGMA foreign_keys = ON');
+      expect(
+        () => db.execute('INSERT INTO orders VALUES (99, 424242)'),
+        throwsA(anything),
+      );
+      db.execute('DELETE FROM users WHERE id = 1');
+      expect(
+        db.select('SELECT count(*) FROM orders').first.values.first,
+        1, // orders(1,1) 被级联删掉
+      );
+    } finally {
+      db.close();
+    }
   });
 
   test('migrate schemaTables:指定 schema→表(空列表=全部表)', () async {

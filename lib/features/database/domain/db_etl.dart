@@ -209,6 +209,8 @@ class DbEtlTableRule {
     for (final c in sourceColumns) {
       final rule = _ruleFor(c.name);
       if (!rule.include) continue;
+      // 值经过转换后源默认值不再适用(类型/语义都可能变),丢弃;注释保留
+      final keepDefault = rule.transform == DbEtlTransform.none;
       if (rule.transform.forcesText) {
         result.add(
           DbMigrationColumn(
@@ -219,6 +221,7 @@ class DbEtlTableRule {
             nullable:
                 c.nullable || rule.transform == DbEtlTransform.nullify,
             isPrimaryKey: c.isPrimaryKey,
+            comment: c.comment,
           ),
         );
       } else {
@@ -227,6 +230,8 @@ class DbEtlTableRule {
             name: rule.targetName,
             sourceType: c.sourceType,
             generic: c.generic,
+            defaultValue: keepDefault ? c.defaultValue : null,
+            comment: c.comment,
             nullable:
                 c.nullable || rule.transform == DbEtlTransform.nullify,
             isPrimaryKey: c.isPrimaryKey,

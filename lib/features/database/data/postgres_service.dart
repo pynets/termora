@@ -290,6 +290,23 @@ ORDER BY a.attnum'''),
       parameters: {'schema': schema, 'table': table},
     );
 
+    // 外键 / CHECK 约束(迁移保真用;NOT NULL 由列定义表达,不在此列)
+    final constraintsResult = await conn.execute(
+      Sql.named('''
+SELECT con.conname, con.contype::text,
+       pg_get_constraintdef(con.oid, true),
+       refns.nspname, refc.relname
+FROM pg_constraint con
+JOIN pg_class c ON c.oid = con.conrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_class refc ON refc.oid = con.confrelid
+LEFT JOIN pg_namespace refns ON refns.oid = refc.relnamespace
+WHERE n.nspname = @schema AND c.relname = @table
+  AND con.contype IN ('f', 'c')
+ORDER BY con.conname'''),
+      parameters: {'schema': schema, 'table': table},
+    );
+
     // 行数估计 + 表总大小 + 表注释
     final metaResult = await conn.execute(
       Sql.named('''
@@ -320,6 +337,18 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
           DbIndexInfo(
             name: row[0] as String,
             definition: row[1] as String,
+          ),
+      ],
+      constraints: [
+        for (final row in constraintsResult)
+          DbConstraintInfo(
+            name: row[0] as String,
+            type: row[1] == 'f'
+                ? DbConstraintType.foreignKey
+                : DbConstraintType.check,
+            definition: row[2] as String,
+            refSchema: row[3] as String?,
+            refTable: row[4] as String?,
           ),
       ],
       approxRows: meta == null ? 0 : (meta[0] as int),

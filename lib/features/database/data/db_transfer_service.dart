@@ -135,6 +135,7 @@ class DbTransferService {
           targetEngine != DbEngine.sqlite;
       final createdSchemas = <String>{};
       final writtenExtensions = <String>{};
+      final deferredConstraints = <String>[];
 
       sink = File(filePath).openWrite();
       sink.writeln('-- Termora export');
@@ -196,8 +197,36 @@ class DbTransferService {
           columns,
           drop: includeDrop,
           schema: targetSchema,
+          tableComment: structure.comment,
+          constraints: rule == null ? structure.constraints : const [],
         )) {
           sink.writeln('$statement;');
+        }
+        // 外键/CHECK(pg):脚本末尾统一追加(数据装载后)
+        if (rule == null) {
+          deferredConstraints.addAll(
+            DbMigration.buildConstraintStatements(
+              source.engine,
+              targetEngine,
+              structure.constraints,
+              targetTable: targetTable,
+              targetSchema: targetSchema,
+              preserveSchema: preserveSchema,
+            ),
+          );
+        }
+        // 二级索引(ETL 改造过结构的表不迁)
+        if (rule == null) {
+          for (final statement in DbMigration.buildIndexStatements(
+            source.engine,
+            targetEngine,
+            structure.indexes,
+            sourceTable: table,
+            targetTable: targetTable,
+            targetSchema: targetSchema,
+          )) {
+            sink.writeln('$statement;');
+          }
         }
         sink.writeln();
 
@@ -226,6 +255,14 @@ class DbTransferService {
           );
           sink.writeln();
         }
+      }
+      // 外键/CHECK 在数据装载后统一追加
+      if (deferredConstraints.isNotEmpty) {
+        sink.writeln('-- constraints (applied after data load)');
+        for (final statement in deferredConstraints) {
+          sink.writeln('$statement;');
+        }
+        sink.writeln();
       }
       await sink.flush();
       onProgress?.call(
@@ -330,6 +367,7 @@ class DbTransferService {
           target.engine != DbEngine.sqlite;
       final createdSchemas = <String>{};
       final ensuredExtensions = <String>{};
+      final deferredConstraints = <String>[];
 
       var totalRows = 0;
       for (var i = 0; i < targets.length; i++) {
@@ -396,8 +434,46 @@ class DbTransferService {
           columns,
           drop: overwrite,
           schema: targetSchema,
+          tableComment: structure.comment,
+          constraints: rule == null ? structure.constraints : const [],
         )) {
           await DbService.runSql(targetConn, statement);
+        }
+        // 外键/CHECK(pg):攒到全部表和数据完成后统一追加
+        if (rule == null) {
+          deferredConstraints.addAll(
+            DbMigration.buildConstraintStatements(
+              source.engine,
+              target.engine,
+              structure.constraints,
+              targetTable: targetTable,
+              targetSchema: targetSchema,
+              preserveSchema: preserveSchema,
+            ),
+          );
+        }
+        // 二级索引:失败不中断迁移(索引是优化物,数据为先),写日志
+        if (rule == null) {
+          for (final statement in DbMigration.buildIndexStatements(
+            source.engine,
+            target.engine,
+            structure.indexes,
+            sourceTable: table,
+            targetTable: targetTable,
+            targetSchema: targetSchema,
+          )) {
+            try {
+              await DbService.runSql(targetConn, statement);
+            } catch (e) {
+              onProgress?.call(
+                DbTransferProgress(
+                  message: '! index: $e',
+                  done: i,
+                  total: targets.length,
+                ),
+              );
+            }
+          }
         }
 
         // 2. 分页拷贝数据(行过滤推给源库,值转换在批内应用)
@@ -444,6 +520,23 @@ class DbTransferService {
           totalRows += tableRows;
         }
       }
+
+      // 3. 全部表和数据完成后追加外键/CHECK(失败不中断,写日志)
+      for (final statement in deferredConstraints) {
+        _check(isCancelled);
+        try {
+          await DbService.runSql(targetConn, statement);
+        } catch (e) {
+          onProgress?.call(
+            DbTransferProgress(
+              message: '! constraint: $e',
+              done: targets.length,
+              total: targets.length,
+            ),
+          );
+        }
+      }
+
       onProgress?.call(
         DbTransferProgress(
           message: '✓ $totalRows rows',
