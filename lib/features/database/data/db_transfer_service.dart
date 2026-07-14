@@ -134,7 +134,7 @@ class DbTransferService {
           {for (final t in targets) t.schema}.length > 1 &&
           targetEngine != DbEngine.sqlite;
       final createdSchemas = <String>{};
-      var postgisWritten = false;
+      final writtenExtensions = <String>{};
 
       sink = File(filePath).openWrite();
       sink.writeln('-- Termora export');
@@ -177,16 +177,17 @@ class DbTransferService {
         if (rule != null) {
           columns = rule.applyToColumns(source.engine, columns);
         }
-        // PostGIS 列:导入端需要 postgis 扩展,脚本里带上(一次)
-        if (targetEngine == DbEngine.postgres &&
-            !postgisWritten &&
-            columns.any(
-              (c) => DbMigration.isGeoType(
-                DbMigration.targetColumnType(source.engine, targetEngine, c),
-              ),
-            )) {
-          postgisWritten = true;
-          sink.writeln('CREATE EXTENSION IF NOT EXISTS postgis;');
+        // 扩展类型列(postgis/vector 等):导入端需要扩展,脚本里带上(各一次)
+        if (targetEngine == DbEngine.postgres) {
+          for (final ext in _requiredExtensions(
+            source.engine,
+            targetEngine,
+            columns,
+          )) {
+            if (writtenExtensions.add(ext)) {
+              sink.writeln('CREATE EXTENSION IF NOT EXISTS "$ext";');
+            }
+          }
         }
         for (final statement in DbMigration.buildCreateTable(
           source.engine,
@@ -328,7 +329,7 @@ class DbTransferService {
           {for (final t in targets) t.schema}.length > 1 &&
           target.engine != DbEngine.sqlite;
       final createdSchemas = <String>{};
-      var postgisEnsured = false;
+      final ensuredExtensions = <String>{};
 
       var totalRows = 0;
       for (var i = 0; i < targets.length; i++) {
@@ -363,29 +364,29 @@ class DbTransferService {
         if (rule != null) {
           columns = rule.applyToColumns(source.engine, columns);
         }
-        // PostGIS 列需要目标端有 postgis 扩展(best-effort,失败交给建表报错)
-        if (target.engine == DbEngine.postgres &&
-            !postgisEnsured &&
-            columns.any(
-              (c) => DbMigration.isGeoType(
-                DbMigration.targetColumnType(source.engine, target.engine, c),
-              ),
-            )) {
-          postgisEnsured = true;
-          try {
-            await DbService.runSql(
-              targetConn,
-              'CREATE EXTENSION IF NOT EXISTS postgis',
-            );
-          } catch (e) {
-            // 不中断(可能扩展已可用/权限不足);写日志提示,建表若失败错误自会浮出
-            onProgress?.call(
-              DbTransferProgress(
-                message: '! CREATE EXTENSION postgis: $e',
-                done: i,
-                total: targets.length,
-              ),
-            );
+        // 扩展类型列(postgis/vector 等)需要目标端先装扩展(best-effort)
+        if (target.engine == DbEngine.postgres) {
+          for (final ext in _requiredExtensions(
+            source.engine,
+            target.engine,
+            columns,
+          )) {
+            if (!ensuredExtensions.add(ext)) continue;
+            try {
+              await DbService.runSql(
+                targetConn,
+                'CREATE EXTENSION IF NOT EXISTS "$ext"',
+              );
+            } catch (e) {
+              // 不中断(可能扩展已可用/权限不足);写日志提示,建表若失败错误自会浮出
+              onProgress?.call(
+                DbTransferProgress(
+                  message: '! CREATE EXTENSION $ext: $e',
+                  done: i,
+                  total: targets.length,
+                ),
+              );
+            }
           }
         }
         for (final statement in DbMigration.buildCreateTable(
@@ -523,6 +524,18 @@ class DbTransferService {
         '${two(now.hour)}${two(now.minute)}${two(now.second)}';
     return path.replaceAll('{ts}', ts);
   }
+
+  /// 本表各列需要的目标端扩展(去重)
+  static Set<String> _requiredExtensions(
+    DbEngine sourceEngine,
+    DbEngine targetEngine,
+    List<DbMigrationColumn> columns,
+  ) => {
+    for (final c in columns)
+      ?DbMigration.requiredExtension(
+        DbMigration.targetColumnType(sourceEngine, targetEngine, c),
+      ),
+  };
 
   /// 扩展自带的系统表(整库/整 schema 枚举时跳过;显式点名选中的不拦)。
   /// 迁走它们会和目标端 CREATE EXTENSION 冲突——如 PostGIS 的 spatial_ref_sys

@@ -239,7 +239,108 @@ class DbMigration {
         (value is Uint8List || value is List<int>)) {
       return "'${_hex((value as List).cast<int>())}'";
     }
+    // pgvector vector/halfvec:二进制(uint16 维度 + 2 保留 + 元素)解码成
+    // '[f1,f2,…]' 文本;按 bytea 的 '\x…' 写会报 invalid input syntax for type vector
+    if (target == DbEngine.postgres &&
+        isVectorType(columnType) &&
+        (value is Uint8List || value is List<int>)) {
+      final decoded = _pgVectorLiteral(
+        (value as List).cast<int>(),
+        half: columnType!.trimLeft().toLowerCase().startsWith('halfvec'),
+      );
+      if (decoded != null) return decoded;
+    }
     return _literal(target, value);
+  }
+
+  /// 是否 pgvector 向量类型(vector/halfvec,含带维度形式 vector(1024))
+  static bool isVectorType(String? columnType) {
+    if (columnType == null) return false;
+    final lower = columnType.trimLeft().toLowerCase();
+    return lower.startsWith('vector') || lower.startsWith('halfvec');
+  }
+
+  /// 解码 pgvector 二进制(网络字节序):uint16 维度 + uint16 保留 +
+  /// dim × float32(halfvec 为 float16)。长度对不上返回 null(走默认路径)。
+  static String? _pgVectorLiteral(List<int> bytes, {required bool half}) {
+    if (bytes.length < 4) return null;
+    final data = ByteData.sublistView(Uint8List.fromList(bytes));
+    final dim = data.getUint16(0);
+    final elemSize = half ? 2 : 4;
+    if (bytes.length != 4 + dim * elemSize) return null;
+    final values = <String>[];
+    for (var i = 0; i < dim; i++) {
+      final v = half
+          ? _fromHalf(data.getUint16(4 + i * 2))
+          : data.getFloat32(4 + i * 4);
+      values.add(_fmtFloat32(v));
+    }
+    return "'[${values.join(',')}]'";
+  }
+
+  /// float32 的最短往返十进制(直接 toString 会按 double 打 15+ 位)
+  static String _fmtFloat32(double v) {
+    if (v.isNaN || v.isInfinite) return '0';
+    if (v == v.truncateToDouble() && v.abs() < 1e15) {
+      return v.truncateToDouble().toStringAsFixed(0);
+    }
+    final target = _asFloat32(v);
+    for (var p = 6; p <= 9; p++) {
+      final s = _trimZeros(v.toStringAsPrecision(p));
+      if (_asFloat32(double.parse(s)) == target) return s;
+    }
+    return v.toString();
+  }
+
+  /// 去掉小数的尾零("0.250000" → "0.25";科学计数法原样)
+  static String _trimZeros(String s) {
+    if (s.contains('e') || s.contains('E') || !s.contains('.')) return s;
+    var out = s;
+    while (out.endsWith('0')) {
+      out = out.substring(0, out.length - 1);
+    }
+    if (out.endsWith('.')) out = out.substring(0, out.length - 1);
+    return out;
+  }
+
+  static double _asFloat32(double v) =>
+      (ByteData(4)..setFloat32(0, v)).getFloat32(0);
+
+  /// IEEE 754 half(float16)→ double
+  static double _fromHalf(int bits) {
+    final sign = (bits & 0x8000) != 0 ? -1.0 : 1.0;
+    final exp = (bits >> 10) & 0x1f;
+    final frac = bits & 0x3ff;
+    if (exp == 0) {
+      return sign * frac * 5.960464477539063e-8; // 2^-24
+    }
+    if (exp == 31) {
+      return frac == 0 ? sign * double.infinity : double.nan;
+    }
+    // 2^(exp-25) * (1024 + frac)
+    var scale = 1.0;
+    var e = exp - 25;
+    while (e > 0) {
+      scale *= 2;
+      e--;
+    }
+    while (e < 0) {
+      scale /= 2;
+      e++;
+    }
+    return sign * (1024 + frac) * scale;
+  }
+
+  /// 该列类型需要目标端预装的扩展(建表前 CREATE EXTENSION IF NOT EXISTS)
+  static String? requiredExtension(String columnType) {
+    if (isGeoType(columnType)) return 'postgis';
+    final lower = columnType.trimLeft().toLowerCase();
+    if (lower.startsWith('vector') ||
+        lower.startsWith('halfvec') ||
+        lower.startsWith('sparsevec')) {
+      return 'vector';
+    }
+    return null;
   }
 
   /// 是否 PostGIS 几何类型(geometry/geography,含带参形式)

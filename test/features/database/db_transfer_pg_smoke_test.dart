@@ -401,6 +401,77 @@ WHERE c.relname = 'spatial_ref_sys' AND d.deptype = 'e'""")).first.first,
     await _runAll(_pgTarget, ['DROP TABLE IF EXISTS geo_places']);
   });
 
+  test('迁移 pg → pg:pgvector 向量列(需源库已装 vector)', () async {
+    try {
+      await _run(_pgSource, 'CREATE EXTENSION IF NOT EXISTS vector');
+    } catch (_) {
+      markTestSkipped('本地 PG 无 pgvector,跳过');
+      return;
+    }
+
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS vec_chunks',
+      '''
+CREATE TABLE vec_chunks (
+  id bigint PRIMARY KEY,
+  content text,
+  embedding vector(1536)
+)''',
+      // 1536 维大向量(贴近真实 embedding 规模);每 7 行一个 NULL
+      """
+INSERT INTO vec_chunks
+SELECT i,
+       'chunk' || i,
+       CASE WHEN i % 7 = 0 THEN NULL
+            ELSE (SELECT ('[' || string_agg(
+                    ((i * 1000 + d) % 997 * 0.001 - 0.4985)::float4::text, ',')
+                  || ']')
+                  FROM generate_series(1, 1536) d)::vector END
+FROM generate_series(1, 30) i""",
+    ]);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS vec_chunks']);
+
+    // 迁移会在目标端自动 CREATE EXTENSION IF NOT EXISTS vector
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schema: 'public',
+      tables: ['vec_chunks'],
+    );
+    expect(summary.rows, 30);
+
+    // 类型保真 + 维度
+    expect(
+      (await _query(_pgTarget, """
+SELECT format_type(atttypid, atttypmod) FROM pg_attribute a
+JOIN pg_class c ON c.oid = a.attrelid
+WHERE c.relname = 'vec_chunks' AND attname = 'embedding'""")).first.first,
+      'vector(1536)',
+    );
+
+    // 值逐一对比:源和目标的向量文本完全一致(float32 最短往返无损)
+    final srcVecs = await _query(
+      _pgSource,
+      'SELECT id, embedding::text FROM vec_chunks ORDER BY id',
+    );
+    final dstVecs = await _query(
+      _pgTarget,
+      'SELECT id, embedding::text FROM vec_chunks ORDER BY id',
+    );
+    expect(dstVecs.length, srcVecs.length);
+    for (var i = 0; i < srcVecs.length; i++) {
+      expect(dstVecs[i][0], srcVecs[i][0]);
+      expect(
+        dstVecs[i][1],
+        srcVecs[i][1],
+        reason: 'id=${srcVecs[i][0]} 向量不一致',
+      );
+    }
+
+    await _runAll(_pgSource, ['DROP TABLE IF EXISTS vec_chunks']);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS vec_chunks']);
+  });
+
   test('迁移 pg → pg:同引擎类型保真 + 覆盖', () async {
     final summary = await DbTransferService.migrate(
       source: _pgSource,

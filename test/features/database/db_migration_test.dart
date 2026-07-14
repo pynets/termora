@@ -213,6 +213,73 @@ void main() {
       expect(DbMigration.isGeoType(null), isFalse);
     });
 
+    test('pgvector:二进制 → [f1,f2,…] 文本(修 invalid input syntax)', () {
+      // 二进制格式:uint16 维度(大端)+ uint16 保留 + dim × float32(大端)
+      List<int> vec(List<double> values) {
+        final data = ByteData(4 + values.length * 4)
+          ..setUint16(0, values.length)
+          ..setUint16(2, 0);
+        for (var i = 0; i < values.length; i++) {
+          data.setFloat32(4 + i * 4, values[i]);
+        }
+        return data.buffer.asUint8List();
+      }
+
+      expect(
+        DbMigration.literal(
+          DbEngine.postgres,
+          vec([0.25, -1.5, 3.0]),
+          columnType: 'vector(3)',
+        ),
+        "'[0.25,-1.5,3]'",
+      );
+      // float32 最短往返(不会打成 double 的 15+ 位)
+      final one = DbMigration.literal(
+        DbEngine.postgres,
+        vec([0.1]),
+        columnType: 'vector(1)',
+      );
+      expect(one, "'[0.1]'");
+
+      // 长度对不上 → 回落默认 bytea 路径(不崩)
+      expect(
+        DbMigration.literal(
+          DbEngine.postgres,
+          [0x00, 0x03, 0x00, 0x00, 0x01],
+          columnType: 'vector(3)',
+        ),
+        startsWith(r"'\x"),
+      );
+      // 无类型信息不受影响
+      expect(
+        DbMigration.literal(DbEngine.postgres, [0x00, 0x01]),
+        startsWith(r"'\x"),
+      );
+      expect(DbMigration.isVectorType('vector(1024)'), isTrue);
+      expect(DbMigration.isVectorType('halfvec(768)'), isTrue);
+      expect(DbMigration.isVectorType('bytea'), isFalse);
+
+      // halfvec:float16 解码(1.0 = 0x3C00,-2.0 = 0xC000)
+      final halfData = ByteData(8)
+        ..setUint16(0, 2)
+        ..setUint16(2, 0)
+        ..setUint16(4, 0x3C00)
+        ..setUint16(6, 0xC000);
+      expect(
+        DbMigration.literal(
+          DbEngine.postgres,
+          halfData.buffer.asUint8List(),
+          columnType: 'halfvec(2)',
+        ),
+        "'[1,-2]'",
+      );
+
+      // 扩展需求映射
+      expect(DbMigration.requiredExtension('vector(1024)'), 'vector');
+      expect(DbMigration.requiredExtension('geometry(Point,4326)'), 'postgis');
+      expect(DbMigration.requiredExtension('text'), isNull);
+    });
+
     test('pg 数组类型跨引擎归一为 json', () {
       expect(
         DbMigration.mapToGeneric(DbEngine.postgres, 'text[]'),
