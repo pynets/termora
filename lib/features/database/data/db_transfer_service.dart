@@ -71,7 +71,7 @@ class DbTransferService {
     final targets = <({String schema, String table})>[];
     Future<List<String>> allTables(String s) async => [
       for (final info in await DbService.listTables(conn, s))
-        if (!info.isView) info.name,
+        if (!info.isView && !_isExtensionTable(s, info.name)) info.name,
     ];
 
     if (wholeDatabase) {
@@ -134,6 +134,7 @@ class DbTransferService {
           {for (final t in targets) t.schema}.length > 1 &&
           targetEngine != DbEngine.sqlite;
       final createdSchemas = <String>{};
+      var postgisWritten = false;
 
       sink = File(filePath).openWrite();
       sink.writeln('-- Termora export');
@@ -175,6 +176,17 @@ class DbTransferService {
         ];
         if (rule != null) {
           columns = rule.applyToColumns(source.engine, columns);
+        }
+        // PostGIS 列:导入端需要 postgis 扩展,脚本里带上(一次)
+        if (targetEngine == DbEngine.postgres &&
+            !postgisWritten &&
+            columns.any(
+              (c) => DbMigration.isGeoType(
+                DbMigration.targetColumnType(source.engine, targetEngine, c),
+              ),
+            )) {
+          postgisWritten = true;
+          sink.writeln('CREATE EXTENSION IF NOT EXISTS postgis;');
         }
         for (final statement in DbMigration.buildCreateTable(
           source.engine,
@@ -316,6 +328,7 @@ class DbTransferService {
           {for (final t in targets) t.schema}.length > 1 &&
           target.engine != DbEngine.sqlite;
       final createdSchemas = <String>{};
+      var postgisEnsured = false;
 
       var totalRows = 0;
       for (var i = 0; i < targets.length; i++) {
@@ -349,6 +362,31 @@ class DbTransferService {
         ];
         if (rule != null) {
           columns = rule.applyToColumns(source.engine, columns);
+        }
+        // PostGIS 列需要目标端有 postgis 扩展(best-effort,失败交给建表报错)
+        if (target.engine == DbEngine.postgres &&
+            !postgisEnsured &&
+            columns.any(
+              (c) => DbMigration.isGeoType(
+                DbMigration.targetColumnType(source.engine, target.engine, c),
+              ),
+            )) {
+          postgisEnsured = true;
+          try {
+            await DbService.runSql(
+              targetConn,
+              'CREATE EXTENSION IF NOT EXISTS postgis',
+            );
+          } catch (e) {
+            // 不中断(可能扩展已可用/权限不足);写日志提示,建表若失败错误自会浮出
+            onProgress?.call(
+              DbTransferProgress(
+                message: '! CREATE EXTENSION postgis: $e',
+                done: i,
+                total: targets.length,
+              ),
+            );
+          }
         }
         for (final statement in DbMigration.buildCreateTable(
           source.engine,
@@ -485,6 +523,13 @@ class DbTransferService {
         '${two(now.hour)}${two(now.minute)}${two(now.second)}';
     return path.replaceAll('{ts}', ts);
   }
+
+  /// 扩展自带的系统表(整库/整 schema 枚举时跳过;显式点名选中的不拦)。
+  /// 迁走它们会和目标端 CREATE EXTENSION 冲突——如 PostGIS 的 spatial_ref_sys
+  /// 被当普通表搬过去后,目标端装 postgis 时建表撞名而失败。
+  static bool _isExtensionTable(String schema, String table) =>
+      table == 'spatial_ref_sys' ||
+      (schema == 'topology' && (table == 'topology' || table == 'layer'));
 
   /// 目标列名 → 目标列类型(INSERT 字面量需要类型感知,如 pg 数组列)
   static Map<String, String> _targetTypesByName(

@@ -309,6 +309,98 @@ FROM arr_users WHERE id = 5""")).first;
     await _runAll(_pgTarget, ['DROP TABLE IF EXISTS arr_users']);
   });
 
+  test('迁移 pg → pg:PostGIS geometry 列(需源库已装 postgis)', () async {
+    // 源库没装 postgis 则跳过(macOS EDB 安装器带 postgis 3.6)
+    try {
+      await _run(_pgSource, 'CREATE EXTENSION IF NOT EXISTS postgis');
+    } catch (_) {
+      markTestSkipped('本地 PG 无 postgis,跳过');
+      return;
+    }
+
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS geo_places',
+      '''
+CREATE TABLE geo_places (
+  id bigint PRIMARY KEY,
+  name text,
+  loc geometry(Point, 4326),
+  area geography(Polygon, 4326)
+)''',
+      """
+INSERT INTO geo_places
+SELECT i,
+       'p' || i,
+       CASE WHEN i % 5 = 0 THEN NULL
+            ELSE ST_SetSRID(ST_MakePoint(i * 0.1, i * 0.2), 4326) END,
+       CASE WHEN i % 3 = 0 THEN NULL
+            ELSE ST_GeogFromText(
+              'POLYGON((0 0, 0 ' || i || ', ' || i || ' 0, 0 0))') END
+FROM generate_series(1, 40) i""",
+    ]);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS geo_places']);
+    // 清掉可能残留的 spatial_ref_sys 孤儿副本(会挡住 CREATE EXTENSION);
+    // 若已归 postgis 扩展管则删不掉,忽略即可
+    try {
+      await _run(_pgTarget, 'DROP TABLE IF EXISTS spatial_ref_sys');
+    } catch (_) {}
+
+    // 迁移会在目标端自动 CREATE EXTENSION IF NOT EXISTS postgis
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schema: 'public',
+      tables: ['geo_places'],
+    );
+    expect(summary.rows, 40);
+
+    // 值保真:坐标 / SRID / NULL;geography 多边形面积一致
+    final row = (await _query(_pgTarget, '''
+SELECT ST_X(loc), ST_Y(loc), ST_SRID(loc) FROM geo_places WHERE id = 1''')).first;
+    expect((row[0] as num).toDouble(), closeTo(0.1, 1e-9));
+    expect((row[1] as num).toDouble(), closeTo(0.2, 1e-9));
+    expect(row[2], 4326);
+    expect(
+      (await _query(
+        _pgTarget,
+        'SELECT loc IS NULL FROM geo_places WHERE id = 5',
+      )).first.first,
+      true,
+    );
+    // 源和目标的同一 geography 面积应一致
+    final srcArea = (await _query(
+      _pgSource,
+      'SELECT ST_Area(area) FROM geo_places WHERE id = 2',
+    )).first.first;
+    final dstArea = (await _query(
+      _pgTarget,
+      'SELECT ST_Area(area) FROM geo_places WHERE id = 2',
+    )).first.first;
+    expect(
+      (dstArea as num).toDouble(),
+      closeTo((srcArea as num).toDouble(), 1),
+    );
+
+    // 整库迁移必须跳过 postgis 系统表(spatial_ref_sys):
+    // 若被当普通表处理,覆盖式 DROP 会撞上扩展依赖直接报错
+    await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      wholeDatabase: true,
+    );
+    // 目标端 spatial_ref_sys 仍归 postgis 扩展管,没有被搬运/重建
+    expect(
+      (await _query(_pgTarget, """
+SELECT count(*) FROM pg_depend d
+JOIN pg_class c ON c.oid = d.objid
+WHERE c.relname = 'spatial_ref_sys' AND d.deptype = 'e'""")).first.first,
+      1,
+    );
+
+    await _runAll(_pgSource, ['DROP TABLE IF EXISTS geo_places']);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS geo_places']);
+  });
+
   test('迁移 pg → pg:同引擎类型保真 + 覆盖', () async {
     final summary = await DbTransferService.migrate(
       source: _pgSource,

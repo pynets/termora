@@ -205,7 +205,7 @@ class _EtlRuleDialogState extends State<_EtlRuleDialog> {
                   ),
                 )
               else if (_error != null)
-                Text(
+                SelectableText(
                   tr2('读取表结构失败: {0}', [_error]),
                   style: TextStyle(fontSize: 12, color: AppTheme.errorColor),
                 )

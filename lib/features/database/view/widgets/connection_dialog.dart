@@ -535,10 +535,9 @@ class _ConnectionDialogState extends State<_ConnectionDialog> {
               ],
               const SizedBox(height: 14),
               if (_testResult != null) ...[
-                Text(
+                SelectableText(
                   _testResult!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 3,
                   style: TextStyle(
                     fontSize: 12,
                     color:

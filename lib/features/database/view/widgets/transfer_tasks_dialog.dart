@@ -7,6 +7,7 @@ import 'package:termora/core/l10n/app_l10n.dart';
 import 'package:termora/features/database/controller/database_providers.dart';
 import 'package:termora/features/database/data/db_transfer_service.dart';
 import 'package:termora/features/database/domain/db_transfer_task.dart';
+import 'package:termora/features/database/view/widgets/copyable_error_box.dart';
 
 /// 打开「传输任务」管理器 — 列出已保存任务,支持运行 / 调度 / 删除。
 Future<void> showTransferTasksDialog(BuildContext context) {
@@ -436,38 +437,24 @@ class _TaskRunnerDialogState extends ConsumerState<_TaskRunnerDialog> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppTheme.borderColor),
                 ),
-                child: ListView.builder(
-                  controller: _scroll,
-                  itemCount: _log.length,
-                  itemBuilder: (context, i) => Text(
-                    _log[i],
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'Menlo',
-                      color: AppTheme.bodyColor,
+                child: SelectionArea(
+                  child: ListView.builder(
+                    controller: _scroll,
+                    itemCount: _log.length,
+                    itemBuilder: (context, i) => Text(
+                      _log[i],
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'Menlo',
+                        color: AppTheme.bodyColor,
+                      ),
                     ),
                   ),
                 ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.errorColor.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _error!,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: AppTheme.errorColor),
-                  ),
-                ),
+                CopyableErrorBox(text: _error!),
               ],
               const SizedBox(height: 14),
               Row(

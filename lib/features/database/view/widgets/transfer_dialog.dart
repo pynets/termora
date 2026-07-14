@@ -15,6 +15,7 @@ import 'package:termora/features/database/data/db_transfer_service.dart';
 import 'package:termora/features/database/domain/db_etl.dart';
 import 'package:termora/features/database/domain/db_models.dart';
 import 'package:termora/features/database/domain/db_transfer_task.dart';
+import 'package:termora/features/database/view/widgets/copyable_error_box.dart';
 import 'package:termora/features/database/view/widgets/etl_rule_dialog.dart';
 
 /// 打开导出/导入/迁移向导。[presetWholeDatabase] 用于「备份整库」入口:
@@ -621,10 +622,7 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
 
   Widget _buildSelectBody() {
     if (_metaError != null) {
-      return Text(
-        tr2('读取源库失败: {0}', [_metaError]),
-        style: TextStyle(fontSize: 12, color: AppTheme.errorColor),
-      );
+      return CopyableErrorBox(text: tr2('读取源库失败: {0}', [_metaError]));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1074,15 +1072,17 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppTheme.borderColor),
           ),
-          child: ListView.builder(
-            controller: _logScroll,
-            itemCount: _log.length,
-            itemBuilder: (context, index) => Text(
-              _log[index],
-              style: TextStyle(
-                fontSize: 11,
-                fontFamily: 'Menlo',
-                color: AppTheme.bodyColor,
+          child: SelectionArea(
+            child: ListView.builder(
+              controller: _logScroll,
+              itemCount: _log.length,
+              itemBuilder: (context, index) => Text(
+                _log[index],
+                style: TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'Menlo',
+                  color: AppTheme.bodyColor,
+                ),
               ),
             ),
           ),
@@ -1091,20 +1091,5 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
     );
   }
 
-  Widget _buildError() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppTheme.errorColor.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        _error!,
-        maxLines: 5,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 12, color: AppTheme.errorColor),
-      ),
-    );
-  }
+  Widget _buildError() => CopyableErrorBox(text: _error!);
 }

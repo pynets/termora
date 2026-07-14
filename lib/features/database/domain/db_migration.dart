@@ -232,8 +232,25 @@ class DbMigration {
       final body = _pgArrayBody(value);
       return "'${body.replaceAll("'", "''")}'";
     }
+    // PostGIS geometry/geography:驱动不识别的二进制 WKB 以字节回来,
+    // 按 bytea 的 '\x…' 写会报 invalid geometry hint —— 要无前缀 hex EWKB
+    if (target == DbEngine.postgres &&
+        isGeoType(columnType) &&
+        (value is Uint8List || value is List<int>)) {
+      return "'${_hex((value as List).cast<int>())}'";
+    }
     return _literal(target, value);
   }
+
+  /// 是否 PostGIS 几何类型(geometry/geography,含带参形式)
+  static bool isGeoType(String? columnType) {
+    if (columnType == null) return false;
+    final lower = columnType.trimLeft().toLowerCase();
+    return lower.startsWith('geometry') || lower.startsWith('geography');
+  }
+
+  static String _hex(List<int> bytes) =>
+      [for (final b in bytes) b.toRadixString(16).padLeft(2, '0')].join();
 
   /// pg 数组字面量主体(递归支持多维):元素双引号包裹,转义 \ 和 "
   static String _pgArrayBody(List<dynamic> values) {

@@ -132,7 +132,7 @@ class _DbOverviewPanelState extends ConsumerState<DbOverviewPanel> {
         children: [
           Icon(LucideIcons.circleAlert, size: 28, color: AppTheme.errorColor),
           const SizedBox(height: 10),
-          Text(
+          SelectableText(
             tr2('读取指标失败: {0}', [e]),
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: AppTheme.bodyColor),

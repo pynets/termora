@@ -187,6 +187,32 @@ void main() {
       );
     });
 
+    test('PostGIS geometry:字节值 → 无前缀 hex EWKB(修 invalid geometry hint)', () {
+      final wkb = [0x01, 0x01, 0x00, 0x00, 0x20, 0xe6, 0x10];
+      // geometry/geography 列:hex 无 \x 前缀
+      expect(
+        DbMigration.literal(
+          DbEngine.postgres,
+          wkb,
+          columnType: 'geometry(Point,4326)',
+        ),
+        "'01010000%s'".replaceAll('%s', '20e610'),
+      );
+      expect(
+        DbMigration.literal(DbEngine.postgres, wkb, columnType: 'geography'),
+        "'0101000020e610'",
+      );
+      // bytea 列不受影响,仍是 \x 前缀
+      expect(
+        DbMigration.literal(DbEngine.postgres, wkb, columnType: 'bytea'),
+        r"'\x0101000020e610'",
+      );
+      expect(DbMigration.isGeoType('geometry(Point,4326)'), isTrue);
+      expect(DbMigration.isGeoType('geography(Point,4326)'), isTrue);
+      expect(DbMigration.isGeoType('bytea'), isFalse);
+      expect(DbMigration.isGeoType(null), isFalse);
+    });
+
     test('pg 数组类型跨引擎归一为 json', () {
       expect(
         DbMigration.mapToGeneric(DbEngine.postgres, 'text[]'),

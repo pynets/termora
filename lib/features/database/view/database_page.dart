@@ -325,10 +325,9 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           session.status == DbSessionStatus.disconnected)
         Padding(
           padding: const EdgeInsets.fromLTRB(35, 0, 12, 6),
-          child: Text(
+          child: SelectableText(
             session.connectError!,
             maxLines: 3,
-            overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 11, color: AppTheme.errorColor),
           ),
         ),
