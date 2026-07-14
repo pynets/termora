@@ -317,7 +317,7 @@ void main() {
         'events',
         columns,
       );
-      expect(statements.first, 'DROP TABLE IF EXISTS "events"');
+      expect(statements.first, 'DROP TABLE IF EXISTS "events"'); // sqlite 无 CASCADE
       expect(statements[1], contains('"id" INTEGER NOT NULL'));
       expect(statements[1], contains('"note" TEXT'));
       expect(statements[1], contains('PRIMARY KEY ("id")'));
@@ -429,7 +429,8 @@ void main() {
         cols,
         schema: 'app',
       );
-      expect(ddl.first, 'DROP TABLE IF EXISTS "app"."events"');
+      // pg 目标带 CASCADE(否则被外键引用的表删不掉 2BP01)
+      expect(ddl.first, 'DROP TABLE IF EXISTS "app"."events" CASCADE');
       expect(ddl[1], contains('CREATE TABLE "app"."events"'));
 
       final insert = DbMigration.buildInsert(

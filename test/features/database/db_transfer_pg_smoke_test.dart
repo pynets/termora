@@ -712,6 +712,61 @@ WHERE attrelid = 'gen_items'::regclass AND attname = 'total'""")).first.first,
     await _runAll(_pgTarget, ['DROP TABLE IF EXISTS gen_items']);
   });
 
+  test('覆盖式重迁 pg → pg:被外键引用的表也能 DROP(修 2BP01)', () async {
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS ref_child, ref_parent CASCADE',
+      'CREATE TABLE ref_parent (id bigint PRIMARY KEY, name text)',
+      '''
+CREATE TABLE ref_child (
+  id bigint PRIMARY KEY,
+  pid bigint REFERENCES ref_parent(id)
+)''',
+      'INSERT INTO ref_parent SELECT i, \'p\' || i FROM generate_series(1, 5) i',
+      'INSERT INTO ref_child SELECT i, (i % 5) + 1 FROM generate_series(1, 8) i',
+    ]);
+    await _runAll(_pgTarget, [
+      'DROP TABLE IF EXISTS ref_child, ref_parent CASCADE',
+    ]);
+
+    Future<void> migrate() => DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schemaTables: const {'public': ['ref_parent', 'ref_child']},
+    );
+
+    // 第一次迁移建好表+外键
+    await migrate();
+    // 第二次覆盖式重迁:目标端 ref_parent 已被 ref_child 的外键引用,
+    // DROP 必须 CASCADE 才不报 2BP01
+    await migrate();
+
+    expect(
+      (await _query(
+        _pgTarget,
+        'SELECT count(*) FROM ref_child',
+      )).first.first,
+      8,
+    );
+    // 外键仍在且生效
+    expect(
+      (await _query(_pgTarget, """
+SELECT count(*) FROM pg_constraint
+WHERE conrelid = 'ref_child'::regclass AND contype = 'f'""")).first.first,
+      1,
+    );
+    await expectLater(
+      _run(_pgTarget, 'INSERT INTO ref_child VALUES (99, 424242)'),
+      throwsA(anything),
+    );
+
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS ref_child, ref_parent CASCADE',
+    ]);
+    await _runAll(_pgTarget, [
+      'DROP TABLE IF EXISTS ref_child, ref_parent CASCADE',
+    ]);
+  });
+
   test('迁移 pg → pg:外键 + CHECK(子表排序在父表前也不怕)', () async {
     await _runAll(_pgSource, [
       'DROP TABLE IF EXISTS a_orders', // 名字排在父表前,考验建表顺序无关性

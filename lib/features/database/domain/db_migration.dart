@@ -532,7 +532,12 @@ class DbMigration {
     }
 
     return [
-      if (drop) 'DROP TABLE IF EXISTS $t',
+      // pg:CASCADE 一并删掉别的表对本表的外键(否则被引用的表删不掉 2BP01);
+      // 这些外键在数据装完后统一重建。sqlite(迁移期不强制 FK)/CH 无需 CASCADE。
+      if (drop)
+        target == DbEngine.postgres
+            ? 'DROP TABLE IF EXISTS $t CASCADE'
+            : 'DROP TABLE IF EXISTS $t',
       'CREATE TABLE $t (\n${defs.join(',\n')}\n$tail',
       // pg 的表/列注释用 COMMENT ON 语句补(sqlite 不支持注释,丢弃)
       if (target == DbEngine.postgres) ...[
