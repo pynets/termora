@@ -136,6 +136,7 @@ class DbTransferService {
       final createdSchemas = <String>{};
       final writtenExtensions = <String>{};
       final deferredConstraints = <String>[];
+      final deferredResets = <String>[];
 
       sink = File(filePath).openWrite();
       sink.writeln('-- Termora export');
@@ -214,6 +215,17 @@ class DbTransferService {
               preserveSchema: preserveSchema,
             ),
           );
+          if (includeData) {
+            deferredResets.addAll(
+              DbMigration.buildResetSequenceStatements(
+                source.engine,
+                targetEngine,
+                columns,
+                targetTable: targetTable,
+                targetSchema: targetSchema,
+              ),
+            );
+          }
         }
         // 二级索引(ETL 改造过结构的表不迁)
         if (rule == null) {
@@ -265,10 +277,10 @@ class DbTransferService {
           sink.writeln();
         }
       }
-      // 外键/CHECK 在数据装载后统一追加
-      if (deferredConstraints.isNotEmpty) {
-        sink.writeln('-- constraints (applied after data load)');
-        for (final statement in deferredConstraints) {
+      // 数据装载后:自增序列复位 + 外键/CHECK
+      if (deferredResets.isNotEmpty || deferredConstraints.isNotEmpty) {
+        sink.writeln('-- sequences & constraints (applied after data load)');
+        for (final statement in [...deferredResets, ...deferredConstraints]) {
           sink.writeln('$statement;');
         }
         sink.writeln();
@@ -377,6 +389,7 @@ class DbTransferService {
       final createdSchemas = <String>{};
       final ensuredExtensions = <String>{};
       final deferredConstraints = <String>[];
+      final deferredResets = <String>[];
 
       var totalRows = 0;
       for (var i = 0; i < targets.length; i++) {
@@ -460,6 +473,18 @@ class DbTransferService {
               preserveSchema: preserveSchema,
             ),
           );
+          // 自增序列拨到 max(列):数据装完才能算,攒到最后
+          if (copyData) {
+            deferredResets.addAll(
+              DbMigration.buildResetSequenceStatements(
+                source.engine,
+                target.engine,
+                columns,
+                targetTable: targetTable,
+                targetSchema: targetSchema,
+              ),
+            );
+          }
         }
         // 二级索引:失败不中断迁移(索引是优化物,数据为先),写日志
         if (rule == null) {
@@ -539,15 +564,15 @@ class DbTransferService {
         }
       }
 
-      // 3. 全部表和数据完成后追加外键/CHECK(失败不中断,写日志)
-      for (final statement in deferredConstraints) {
+      // 3. 全部表和数据完成后:自增序列复位 + 追加外键/CHECK(失败不中断)
+      for (final statement in [...deferredResets, ...deferredConstraints]) {
         _check(isCancelled);
         try {
           await DbService.runSql(targetConn, statement);
         } catch (e) {
           onProgress?.call(
             DbTransferProgress(
-              message: '! constraint: $e',
+              message: '! ${e.toString().split('\n').first}',
               done: targets.length,
               total: targets.length,
             ),

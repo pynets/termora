@@ -151,6 +151,7 @@ class DbColumnInfo {
     this.isPrimaryKey = false,
     this.comment,
     this.isGenerated = false,
+    this.isIdentity = false,
   });
 
   final String name;
@@ -167,6 +168,9 @@ class DbColumnInfo {
   /// 生成列(pg GENERATED ALWAYS AS … STORED):不能 INSERT,
   /// 表达式在 [defaultValue]
   final bool isGenerated;
+
+  /// 自增标识列(pg GENERATED … AS IDENTITY)
+  final bool isIdentity;
 }
 
 /// 表的索引定义

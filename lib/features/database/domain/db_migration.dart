@@ -30,6 +30,7 @@ class DbMigrationColumn {
     this.defaultValue,
     this.comment,
     this.isGenerated = false,
+    this.isIdentity = false,
   });
 
   final String name;
@@ -49,6 +50,9 @@ class DbMigrationColumn {
   /// 生成列(表达式在 [defaultValue];pg→pg 重建生成性,跨引擎降级为普通列)
   final bool isGenerated;
 
+  /// 自增标识列(pg IDENTITY / serial)
+  final bool isIdentity;
+
   factory DbMigrationColumn.from(DbEngine source, DbColumnInfo info) {
     return DbMigrationColumn(
       name: info.name,
@@ -59,6 +63,7 @@ class DbMigrationColumn {
       defaultValue: info.defaultValue,
       comment: info.comment,
       isGenerated: info.isGenerated,
+      isIdentity: info.isIdentity,
     );
   }
 }
@@ -460,9 +465,9 @@ class DbMigration {
           source == DbEngine.postgres &&
           target == DbEngine.postgres &&
           c.defaultValue != null;
-      // 默认值(serial 的 nextval 默认转 IDENTITY,由 identity 分支处理)
+      // 自增列(serial 的 nextval 默认 / 现代 IDENTITY 列)统一重建为 IDENTITY
       final identity =
-          target == DbEngine.postgres && _isSerialDefault(source, c);
+          target == DbEngine.postgres && _isPgAutoInc(source, c);
       final defaultExpr = (identity || c.isGenerated)
           ? null
           : _defaultExprFor(source, target, c);
@@ -548,6 +553,40 @@ class DbMigration {
     if (!def.startsWith('nextval(')) return false;
     final type = c.sourceType.toLowerCase();
     return type == 'integer' || type == 'bigint' || type == 'smallint';
+  }
+
+  /// pg 自增列:serial(nextval 默认)或现代 IDENTITY 列
+  static bool _isPgAutoInc(DbEngine source, DbMigrationColumn c) =>
+      source == DbEngine.postgres && (c.isIdentity || _isSerialDefault(source, c));
+
+  /// 数据装载后把自增序列拨到 max(列) —— 否则序列仍停在 1,
+  /// 下一次插入会撞已迁数据的主键。pg→pg 才需要(生成 setval 语句)。
+  static List<String> buildResetSequenceStatements(
+    DbEngine source,
+    DbEngine target,
+    List<DbMigrationColumn> columns, {
+    required String targetTable,
+    String? targetSchema,
+  }) {
+    if (source != DbEngine.postgres || target != DbEngine.postgres) {
+      return const [];
+    }
+    final t = qualified(target, targetSchema, targetTable);
+    final tLit = "'${t.replaceAll("'", "''")}'"; // pg_get_serial_sequence 的表参数
+    final out = <String>[];
+    for (final c in columns) {
+      if (!_isPgAutoInc(source, c)) continue;
+      final col = ident(target, c.name);
+      final colLit = "'${c.name.replaceAll("'", "''")}'";
+      final maxq = '(SELECT max($col) FROM $t)';
+      // is_called=true 时 nextval 返回 max+1;空表则 setval(seq,1,false) → 下次为 1
+      out.add(
+        'SELECT setval(pg_get_serial_sequence($tLit, $colLit), '
+        'COALESCE($maxq, 1), $maxq IS NOT NULL) '
+        'WHERE pg_get_serial_sequence($tLit, $colLit) IS NOT NULL',
+      );
+    }
+    return out;
   }
 
   /// 列默认值在目标端的表达式;带不过去的返回 null(丢弃默认值)。

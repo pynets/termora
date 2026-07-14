@@ -555,10 +555,8 @@ WHERE table_name = 'fid_users' ORDER BY ordinal_position""");
     expect(defByName['score'], contains('10.5'));
     expect(defByName['created_at'], contains('now()'));
 
-    // serial → IDENTITY:不带默认值插入能自增,且从已迁数据之后继续
-    await _run(_pgTarget, """
-SELECT setval(pg_get_serial_sequence('fid_users', 'id'),
-              (SELECT max(id) FROM fid_users))""");
+    // serial → IDENTITY:迁移应已把序列拨到 max(id)=20,不带 id 直接插入
+    // 就能自增到 21(不再手动 setval —— 这正是之前漏掉的一步)
     await _run(
       _pgTarget,
       "INSERT INTO fid_users (email) VALUES ('new@x.com')",
@@ -566,9 +564,9 @@ SELECT setval(pg_get_serial_sequence('fid_users', 'id'),
     expect(
       (await _query(
         _pgTarget,
-        "SELECT id > 20, status FROM fid_users WHERE email = 'new@x.com'",
+        "SELECT id, status FROM fid_users WHERE email = 'new@x.com'",
       )).first,
-      [true, 'active'], // 自增生效 + 默认值生效
+      [21, 'active'], // 自增续在已迁数据之后 + 默认值生效
     );
 
     // 注释迁过来了
@@ -604,6 +602,52 @@ WHERE tablename = 'fid_users' ORDER BY indexname""");
 
     await _runAll(_pgSource, ['DROP TABLE IF EXISTS fid_users']);
     await _runAll(_pgTarget, ['DROP TABLE IF EXISTS fid_users']);
+  });
+
+  test('迁移 pg → pg:现代 IDENTITY 主键(序列拨到 max,直接续增)', () async {
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS idn_t',
+      '''
+CREATE TABLE idn_t (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text
+)''',
+      "INSERT INTO idn_t (name) SELECT 'n' || i FROM generate_series(1, 50) i",
+    ]);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS idn_t']);
+
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schema: 'public',
+      tables: ['idn_t'],
+    );
+    expect(summary.rows, 50);
+
+    // 目标端 id 仍是 IDENTITY 列
+    expect(
+      (await _query(_pgTarget, """
+SELECT attidentity <> '' FROM pg_attribute
+WHERE attrelid = 'idn_t'::regclass AND attname = 'id'""")).first.first,
+      true,
+    );
+    // 数据保真 + max=50
+    expect(
+      (await _query(_pgTarget, 'SELECT max(id) FROM idn_t')).first.first,
+      50,
+    );
+    // 直接插入(BY DEFAULT identity 允许省略 id)→ 自增 51,不撞主键
+    await _run(_pgTarget, "INSERT INTO idn_t (name) VALUES ('new')");
+    expect(
+      (await _query(
+        _pgTarget,
+        "SELECT id FROM idn_t WHERE name = 'new'",
+      )).first.first,
+      51,
+    );
+
+    await _runAll(_pgSource, ['DROP TABLE IF EXISTS idn_t']);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS idn_t']);
   });
 
   test('迁移 pg → pg:生成列(GENERATED STORED)重建并自动重算', () async {

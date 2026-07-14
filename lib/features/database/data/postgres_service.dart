@@ -270,7 +270,8 @@ SELECT a.attname,
        pg_get_expr(d.adbin, d.adrelid) AS default_value,
        COALESCE(i.indisprimary, false) AS is_pk,
        col_description(a.attrelid, a.attnum) AS comment,
-       a.attgenerated = 's' AS is_generated
+       a.attgenerated = 's' AS is_generated,
+       a.attidentity <> '' AS is_identity
 FROM pg_attribute a
 JOIN pg_class c ON c.oid = a.attrelid
 JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -332,6 +333,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
             isPrimaryKey: row[4] as bool,
             comment: row[5] as String?,
             isGenerated: row[6] as bool? ?? false,
+            isIdentity: row[7] as bool? ?? false,
           ),
       ],
       indexes: [
