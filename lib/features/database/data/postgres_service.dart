@@ -659,6 +659,33 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
       [for (final v in row) _normalizeValue(v)];
 
   static Object? _normalizeValue(Object? value) {
+    // 驱动特有类型 → pg 文本输入格式(toString 是 "Time(…)" 这类包装,
+    // 直接进网格难看、进 INSERT 会报 invalid input syntax)
+    if (value is Time) return _formatTime(value);
+    if (value is Interval) {
+      return '${value.months} months ${value.days} days '
+          '${value.microseconds} microseconds';
+    }
+    if (value is Point) return _formatPoint(value);
+    if (value is LineSegment) {
+      return '[${_formatPoint(value.p1)},${_formatPoint(value.p2)}]';
+    }
+    if (value is Box) {
+      return '(${_formatPoint(value.p1)},${_formatPoint(value.p2)})';
+    }
+    // Path 继承 Polygon,先判 Path
+    if (value is Path) {
+      final pts = value.points.map(_formatPoint).join(',');
+      return value.open ? '[$pts]' : '($pts)';
+    }
+    if (value is Polygon) {
+      return '(${value.points.map(_formatPoint).join(',')})';
+    }
+    if (value is Circle) {
+      return '<${_formatPoint(value.center)},${value.radius}>';
+    }
+    if (value is Line) return '{${value.a},${value.b},${value.c}}';
+    if (value is Range) return _formatRange(value);
     if (value is! UndecodedBytes) return value;
     // UUID 的 binary 表示是 16 字节,需格式化为 8-4-4-4-12 十六进制
     if (value.isBinary &&
@@ -672,6 +699,39 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
     } catch (_) {
       return value.bytes;
     }
+  }
+
+  /// time → 'HH:MM:SS(.ffffff)'(24:00:00 也是合法 time 输入)
+  static String _formatTime(Time t) {
+    final us = t.microseconds;
+    String two(int n) => n.toString().padLeft(2, '0');
+    final base =
+        '${two(us ~/ Duration.microsecondsPerHour)}:'
+        '${two((us ~/ Duration.microsecondsPerMinute) % 60)}:'
+        '${two((us ~/ Duration.microsecondsPerSecond) % 60)}';
+    final frac = us % Duration.microsecondsPerSecond;
+    if (frac == 0) return base;
+    var f = frac.toString().padLeft(6, '0');
+    while (f.endsWith('0')) {
+      f = f.substring(0, f.length - 1);
+    }
+    return '$base.$f';
+  }
+
+  /// point → '(x,y)'(驱动的 latitude/longitude 即 x/y,与其编码顺序一致)
+  static String _formatPoint(Point p) => '(${p.latitude},${p.longitude})';
+
+  /// range → '[a,b)' 文本形式;无界端留空
+  static String _formatRange(Range<Object?> r) {
+    String elem(Object? v) {
+      if (v == null) return '';
+      final s = v is DateTime ? v.toIso8601String() : '$v';
+      return '"${s.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+    }
+
+    final open = r.bounds.lower == Bound.inclusive ? '[' : '(';
+    final close = r.bounds.upper == Bound.inclusive ? ']' : ')';
+    return '$open${elem(r.lower)},${elem(r.upper)}$close';
   }
 
   static String _formatUuid(List<int> bytes) {
