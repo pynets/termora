@@ -189,6 +189,11 @@ class DbTransferService {
         sink.writeln();
 
         if (includeData) {
+          final typeByName = _targetTypesByName(
+            source.engine,
+            targetEngine,
+            columns,
+          );
           totalRows += await _forEachBatch(
             conn,
             srcSchema,
@@ -200,7 +205,9 @@ class DbTransferService {
                   ? (columnNames, rows)
                   : rule.applyToBatch(columnNames, rows);
               sink!.writeln(
-                '${DbMigration.buildInsert(targetEngine, targetTable, outColumns, outRows, schema: targetSchema)};',
+                '${DbMigration.buildInsert(targetEngine, targetTable, outColumns, outRows, schema: targetSchema, columnTypes: [
+                  for (final c in outColumns) typeByName[c] ?? '',
+                ])};',
               );
             },
           );
@@ -356,6 +363,11 @@ class DbTransferService {
 
         // 2. 分页拷贝数据(行过滤推给源库,值转换在批内应用)
         if (copyData) {
+          final typeByName = _targetTypesByName(
+            source.engine,
+            target.engine,
+            columns,
+          );
           var tableRows = 0;
           await _forEachBatch(
             sourceConn,
@@ -375,6 +387,9 @@ class DbTransferService {
                   outColumns,
                   outRows,
                   schema: targetSchema,
+                  columnTypes: [
+                    for (final c in outColumns) typeByName[c] ?? '',
+                  ],
                 ),
               );
               tableRows += rows.length;
@@ -470,6 +485,16 @@ class DbTransferService {
         '${two(now.hour)}${two(now.minute)}${two(now.second)}';
     return path.replaceAll('{ts}', ts);
   }
+
+  /// 目标列名 → 目标列类型(INSERT 字面量需要类型感知,如 pg 数组列)
+  static Map<String, String> _targetTypesByName(
+    DbEngine sourceEngine,
+    DbEngine targetEngine,
+    List<DbMigrationColumn> columns,
+  ) => {
+    for (final c in columns)
+      c.name: DbMigration.targetColumnType(sourceEngine, targetEngine, c),
+  };
 
   /// 按页遍历表数据,每攒够 [rowsPerInsert] 行回调一批;返回总行数。
   /// [rowFilters] 为 ETL 行过滤,由各引擎 service 转成对应 WHERE 下推执行。

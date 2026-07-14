@@ -231,6 +231,84 @@ FROM generate_series(1, 450) i;
     ]);
   });
 
+  test('迁移 pg → pg:数组列(text[]/integer[],含空数组)', () async {
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS arr_users',
+      '''
+CREATE TABLE arr_users (
+  id bigint PRIMARY KEY,
+  tags text[],
+  nums integer[],
+  meta jsonb
+)''',
+      r"""
+INSERT INTO arr_users
+SELECT i,
+       CASE WHEN i % 5 = 0 THEN '{}'::text[]
+            WHEN i % 7 = 0 THEN NULL
+            ELSE ARRAY['x' || i, 'q "d" z', 'a\b', 'it''s'] END,
+       CASE WHEN i % 3 = 0 THEN ARRAY[]::integer[] ELSE ARRAY[i, i * 2] END,
+       jsonb_build_array(i, 'a')
+FROM generate_series(1, 60) i""",
+    ]);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS arr_users']);
+
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schema: 'public',
+      tables: ['arr_users'],
+    );
+    expect(summary.rows, 60);
+
+    // 类型保真
+    final types = await _query(_pgTarget, """
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_name = 'arr_users' ORDER BY ordinal_position""");
+    final byName = {for (final r in types) r[0]: r[1]};
+    expect(byName['tags'], 'ARRAY');
+    expect(byName['nums'], 'ARRAY');
+
+    // 值保真:空数组 / NULL / 特殊字符元素 / 数字数组 / jsonb 数组
+    final row1 = (await _query(_pgTarget, """
+SELECT array_length(tags, 1), tags[1], tags[2], tags[3], tags[4],
+       nums[2], meta ->> 1
+FROM arr_users WHERE id = 1""")).first;
+    expect(row1[0], 4);
+    expect(row1[1], 'x1');
+    expect(row1[2], 'q "d" z');
+    expect(row1[3], r'a\b');
+    expect(row1[4], "it's");
+    expect(row1[5], 2);
+    expect(row1[6], 'a');
+
+    // 空数组(曾报 22P02 malformed array literal 的场景)
+    final row5 = (await _query(_pgTarget, """
+SELECT tags = '{}'::text[], array_length(tags, 1) IS NULL
+FROM arr_users WHERE id = 5""")).first;
+    expect(row5[0], true);
+    expect(row5[1], true);
+    // NULL 数组
+    expect(
+      (await _query(
+        _pgTarget,
+        'SELECT tags IS NULL FROM arr_users WHERE id = 7',
+      )).first.first,
+      true,
+    );
+    // 空 integer 数组
+    expect(
+      (await _query(
+        _pgTarget,
+        "SELECT nums = '{}'::integer[] FROM arr_users WHERE id = 3",
+      )).first.first,
+      true,
+    );
+
+    await _runAll(_pgSource, ['DROP TABLE IF EXISTS arr_users']);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS arr_users']);
+  });
+
   test('迁移 pg → pg:同引擎类型保真 + 覆盖', () async {
     final summary = await DbTransferService.migrate(
       source: _pgSource,

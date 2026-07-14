@@ -134,6 +134,69 @@ void main() {
         '\'{"a":1}\'',
       );
     });
+
+    test('pg 数组列:List → {…} 数组字面量(修 22P02)', () {
+      // 空数组:JSON 的 '[]' 会报 malformed array literal,必须是 '{}'
+      expect(
+        DbMigration.literal(DbEngine.postgres, [], columnType: 'text[]'),
+        "'{}'",
+      );
+      expect(
+        DbMigration.literal(
+          DbEngine.postgres,
+          ['a', 'b'],
+          columnType: 'text[]',
+        ),
+        '\'{"a","b"}\'',
+      );
+      // 元素转义:双引号/反斜杠;单引号按 SQL 规则双写;NULL 元素
+      expect(
+        DbMigration.literal(
+          DbEngine.postgres,
+          ['x "q"', r'a\b', "it's", null],
+          columnType: 'text[]',
+        ),
+        '\'{"x \\"q\\"","a\\\\b","it\'\'s",NULL}\'',
+      );
+      // 数字数组 + 多维
+      expect(
+        DbMigration.literal(DbEngine.postgres, [1, 2], columnType: 'integer[]'),
+        '\'{"1","2"}\'',
+      );
+      expect(
+        DbMigration.literal(
+          DbEngine.postgres,
+          [
+            [1, 2],
+            [3, 4],
+          ],
+          columnType: 'integer[]',
+        ),
+        '\'{{"1","2"},{"3","4"}}\'',
+      );
+      // 没有列类型 / jsonb 列:保持 JSON 文本
+      expect(DbMigration.literal(DbEngine.postgres, ['a']), '\'["a"]\'');
+      expect(
+        DbMigration.literal(DbEngine.postgres, ['a'], columnType: 'jsonb'),
+        '\'["a"]\'',
+      );
+      // 非 pg 目标不受影响
+      expect(
+        DbMigration.literal(DbEngine.sqlite, ['a'], columnType: 'TEXT'),
+        '\'["a"]\'',
+      );
+    });
+
+    test('pg 数组类型跨引擎归一为 json', () {
+      expect(
+        DbMigration.mapToGeneric(DbEngine.postgres, 'text[]'),
+        DbGenericType.json,
+      );
+      expect(
+        DbMigration.mapToGeneric(DbEngine.postgres, 'integer[]'),
+        DbGenericType.json,
+      );
+    });
   });
 
   group('buildCreateTable', () {

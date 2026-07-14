@@ -69,6 +69,8 @@ class DbMigration {
 
     switch (source) {
       case DbEngine.postgres:
+        // 数组类型(text[] 等)跨引擎按 JSON 文本落地
+        if (lower.endsWith('[]')) return DbGenericType.json;
         if (RegExp(r'^(smallint|int2|integer|int4|serial)').hasMatch(lower)) {
           return DbGenericType.integer;
         }
@@ -214,8 +216,38 @@ class DbMigration {
         DbEngine.sqlite => null,
       };
 
-  /// 值 → 目标引擎的 SQL 字面量
-  static String literal(DbEngine target, Object? value) {
+  /// 值 → 目标引擎的 SQL 字面量。
+  /// [columnType] 为目标列类型(可空):pg 数组列(`…[]`)的 List 值
+  /// 需要生成 `'{…}'` 数组字面量而不是 JSON 文本。
+  static String literal(
+    DbEngine target,
+    Object? value, {
+    String? columnType,
+  }) {
+    // pg 数组列:List → '{…}' 数组字面量(空数组 '{}';JSON 的 '[]' 会报 22P02)
+    if (value is List &&
+        value is! Uint8List &&
+        target == DbEngine.postgres &&
+        (columnType?.trimRight().endsWith('[]') ?? false)) {
+      final body = _pgArrayBody(value);
+      return "'${body.replaceAll("'", "''")}'";
+    }
+    return _literal(target, value);
+  }
+
+  /// pg 数组字面量主体(递归支持多维):元素双引号包裹,转义 \ 和 "
+  static String _pgArrayBody(List<dynamic> values) {
+    String elem(Object? e) {
+      if (e == null) return 'NULL';
+      if (e is List) return _pgArrayBody(e);
+      final text = e is DateTime ? e.toIso8601String() : '$e';
+      return '"${text.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+    }
+
+    return '{${values.map(elem).join(',')}}';
+  }
+
+  static String _literal(DbEngine target, Object? value) {
     if (value == null) return 'NULL';
     if (value is bool) {
       return target == DbEngine.postgres
@@ -323,18 +355,25 @@ class DbMigration {
     ];
   }
 
-  /// 一批行 → 一条多行 INSERT。[schema] 非 null 时用限定名。
+  /// 一批行 → 一条多行 INSERT。[schema] 非 null 时用限定名;
+  /// [columnTypes] 与 [columns] 一一对应(可空),数组列等需要类型感知的字面量。
   static String buildInsert(
     DbEngine target,
     String table,
     List<String> columns,
     List<List<Object?>> rows, {
     String? schema,
+    List<String>? columnTypes,
   }) {
     final cols = columns.map((c) => ident(target, c)).join(', ');
+    String? typeAt(int i) =>
+        (columnTypes != null && i < columnTypes.length) ? columnTypes[i] : null;
     final values = [
       for (final row in rows)
-        '(${row.map((v) => literal(target, v)).join(', ')})',
+        '(${[
+          for (var i = 0; i < row.length; i++)
+            literal(target, row[i], columnType: typeAt(i)),
+        ].join(', ')})',
     ].join(',\n');
     return 'INSERT INTO ${qualified(target, schema, table)} ($cols) VALUES\n$values';
   }
