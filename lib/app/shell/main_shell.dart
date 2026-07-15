@@ -32,7 +32,13 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   static const _updateCheckInterval = Duration(hours: 3);
 
+  // 侧栏可拖拽宽度:min=纯图标,max=图标+宽标签
+  static const _railMinWidth = 60.0;
+  static const _railMaxWidth = 200.0;
+  static const _railDefaultWidth = 76.0;
+
   int _selectedIndex = 0;
+  double _railWidth = _railDefaultWidth;
   final _contentNavigatorKey = GlobalKey<NavigatorState>();
   late final Timer _updateCheckTimer;
 
@@ -43,6 +49,14 @@ class _MainShellState extends ConsumerState<MainShell> {
     WorkspaceStore.loadActiveFeature().then((index) {
       if (mounted && index >= 0 && index < 5) {
         setState(() => _selectedIndex = index);
+      }
+    });
+    // 恢复上次的侧栏宽度
+    WorkspaceStore.loadRailWidth().then((width) {
+      if (mounted && width != null) {
+        setState(
+          () => _railWidth = width.clamp(_railMinWidth, _railMaxWidth),
+        );
       }
     });
     // 首帧后初始化托盘(常驻小羊图标 + 截屏快捷键)
@@ -129,6 +143,7 @@ class _MainShellState extends ConsumerState<MainShell> {
           Row(
             children: [
               _buildRail(l10n, updateState),
+              _buildRailResizer(),
               Expanded(
                 // 内容区顶满上边:页面自绘顶栏直达顶部。顶部透明拖动条为
                 // translucent 命中,单击穿透到页面按钮,空白处仍可拖动窗口
@@ -194,14 +209,16 @@ class _MainShellState extends ConsumerState<MainShell> {
       (icon: LucideIcons.activity, label: l10n.monitor),
     ];
 
-    return Container(
+    return SizedBox(
+      width: _railWidth,
+      child: Container(
       color: AppTheme.surfaceColor,
       child: NavigationRail(
         backgroundColor: Colors.transparent,
         selectedIndex: _selectedIndex,
         onDestinationSelected: _selectFeature,
         labelType: NavigationRailLabelType.all,
-        minWidth: 68,
+        minWidth: _railMinWidth,
         indicatorColor: AppTheme.softBrandColor,
         selectedIconTheme: IconThemeData(color: AppTheme.brandColor, size: 20),
         unselectedIconTheme: IconThemeData(
@@ -260,6 +277,27 @@ class _MainShellState extends ConsumerState<MainShell> {
           for (final d in destinations)
             NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)),
         ],
+      ),
+      ),
+    );
+  }
+
+  /// 侧栏右缘拖拽条:拖动实时改宽,松手落库
+  Widget _buildRailResizer() {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (details) {
+          setState(() {
+            _railWidth = (_railWidth + details.delta.dx).clamp(
+              _railMinWidth,
+              _railMaxWidth,
+            );
+          });
+        },
+        onHorizontalDragEnd: (_) => WorkspaceStore.saveRailWidth(_railWidth),
+        child: const SizedBox(width: 6, height: double.infinity),
       ),
     );
   }

@@ -1,9 +1,10 @@
 import 'package:termora/features/database/domain/db_etl.dart';
 import 'package:termora/features/database/domain/db_models.dart';
 
-/// 传输模式:导出 SQL 脚本 / 导入 SQL 脚本 / 迁移到其它连接。
+/// 传输模式:导出 SQL 脚本 / 导入 SQL 脚本 / 迁移到其它连接 /
+/// 导出便携归档(dump)/ 从归档导入(store)。
 /// (定义在 domain,供任务模型与 UI 共用)
-enum DbTransferMode { export, importScript, migrate }
+enum DbTransferMode { export, importScript, migrate, exportDump, importDump }
 
 /// 调度方式
 enum DbScheduleKind {
@@ -161,9 +162,8 @@ class DbTransferTask {
   final bool? lastRunOk;
   final String? lastRunMessage;
 
-  DbEngine? get exportDialect => exportDialectName == null
-      ? null
-      : DbEngine.fromName(exportDialectName);
+  DbEngine? get exportDialect =>
+      exportDialectName == null ? null : DbEngine.fromName(exportDialectName);
 
   DbTransferTask copyWith({
     String? name,
@@ -205,9 +205,7 @@ class DbTransferTask {
     if (tables.isNotEmpty) 'tables': tables,
     if (schemaTables.isNotEmpty) 'schemaTables': schemaTables,
     if (etlRules.isNotEmpty)
-      'etlRules': {
-        for (final e in etlRules.entries) e.key: e.value.toJson(),
-      },
+      'etlRules': {for (final e in etlRules.entries) e.key: e.value.toJson()},
     'overwrite': overwrite,
     'includeData': includeData,
     'schedule': schedule.toJson(),
@@ -245,9 +243,7 @@ class DbTransferTask {
     includeData: json['includeData'] as bool? ?? true,
     schedule: json['schedule'] == null
         ? const DbTransferSchedule()
-        : DbTransferSchedule.fromJson(
-            json['schedule'] as Map<String, dynamic>,
-          ),
+        : DbTransferSchedule.fromJson(json['schedule'] as Map<String, dynamic>),
     lastRunAtMs: (json['lastRunAtMs'] as num?)?.toInt(),
     lastRunOk: json['lastRunOk'] as bool?,
     lastRunMessage: json['lastRunMessage'] as String?,

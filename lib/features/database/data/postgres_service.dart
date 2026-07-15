@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:postgres/postgres.dart';
+import 'package:termora/features/database/domain/db_migration.dart';
 import 'package:termora/features/database/domain/db_models.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
 
@@ -16,8 +18,7 @@ class PostgresService {
     var sslMode = config.useSsl ? SslMode.require : SslMode.disable;
     if (config.useSsl) {
       final hasRootCert =
-          config.sslRootCertPath != null &&
-          config.sslRootCertPath!.isNotEmpty;
+          config.sslRootCertPath != null && config.sslRootCertPath!.isNotEmpty;
       final hasClientCert =
           config.sslClientCertPath != null &&
           config.sslClientCertPath!.isNotEmpty;
@@ -156,9 +157,7 @@ class PostgresService {
     return (
       DbQueryOutput(
         columns: _columnNames(result),
-        rows: [
-          for (final row in rows) _normalizeRow(row),
-        ],
+        rows: [for (final row in rows) _normalizeRow(row)],
         affectedRows: rows.length,
         elapsed: watch.elapsed,
       ),
@@ -338,10 +337,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
       ],
       indexes: [
         for (final row in indexesResult)
-          DbIndexInfo(
-            name: row[0] as String,
-            definition: row[1] as String,
-          ),
+          DbIndexInfo(name: row[0] as String, definition: row[1] as String),
       ],
       constraints: [
         for (final row in constraintsResult)
@@ -377,9 +373,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
     }
 
     // 值以文本参数传入,CAST 成目标列类型(dataType 来自 pg_catalog,可信)
-    final setExpr = newValue == null
-        ? 'NULL'
-        : 'CAST(@newValue AS $dataType)';
+    final setExpr = newValue == null ? 'NULL' : 'CAST(@newValue AS $dataType)';
 
     final pkNames = pkValues.keys.toList();
     final where = [
@@ -455,9 +449,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
           if (cell.value == null) {
             setClauses.add('${_quoteIdent(colName)} = NULL');
           } else {
-            setClauses.add(
-              '${_quoteIdent(colName)} = CAST(@set$i AS $type)',
-            );
+            setClauses.add('${_quoteIdent(colName)} = CAST(@set$i AS $type)');
             params['set$i'] = '${cell.value}';
             i++;
           }
@@ -467,9 +459,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
         final (where, whereParams) = _pkWhere(context, output.rows[rowIndex]);
         params.addAll(whereParams);
         final result = await tx.execute(
-          Sql.named(
-            'UPDATE $target SET ${setClauses.join(', ')} WHERE $where',
-          ),
+          Sql.named('UPDATE $target SET ${setClauses.join(', ')} WHERE $where'),
           parameters: params,
         );
         if (result.affectedRows != 1) {
@@ -627,9 +617,7 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
       }
       // dollar-quote: $tag$ ... $tag$
       if (ch == r'$') {
-        final match = RegExp(
-          r'^\$[A-Za-z_]*\$',
-        ).firstMatch(sql.substring(i));
+        final match = RegExp(r'^\$[A-Za-z_]*\$').firstMatch(sql.substring(i));
         if (match != null) {
           final tag = match.group(0)!;
           final end = sql.indexOf(tag, i + tag.length);
@@ -680,16 +668,16 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
   }
 
   /// PostgreSQL 标识符引用("镶入语句的 schema/表名必须转义)
-  static String _quoteIdent(String ident) =>
-      '"${ident.replaceAll('"', '""')}"';
+  static String _quoteIdent(String ident) => '"${ident.replaceAll('"', '""')}"';
 
   /// UUID 类型的 OID
   static const _uuidOid = 2950;
 
   /// 归一化一行的值:把 postgres 未解码的 [UndecodedBytes](如 binary 的 uuid)
   /// 转成可读值,避免网格里显示 "Instance of 'UndecodedBytes'"。
-  static List<Object?> _normalizeRow(Iterable<Object?> row) =>
-      [for (final v in row) _normalizeValue(v)];
+  static List<Object?> _normalizeRow(Iterable<Object?> row) => [
+    for (final v in row) _normalizeValue(v),
+  ];
 
   static Object? _normalizeValue(Object? value) {
     // 驱动特有类型 → pg 文本输入格式(toString 是 "Time(…)" 这类包装,
@@ -726,12 +714,34 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
         value.bytes.length == 16) {
       return _formatUuid(value.bytes);
     }
+    // money:驱动无 codec;二进制是 int64 分(2 位小数),文本是 "$1,234.56"。
+    // 统一解成干净小数字符串(网格好看 + 迁移可直接入 numeric)
+    if (value.typeOid == _moneyOid) {
+      if (value.isBinary && value.bytes.length == 8) {
+        return _formatMoneyCents(value.bytes);
+      }
+      try {
+        return DbMigration.cleanMoney(value.asString);
+      } catch (_) {}
+    }
     // 其余未解码类型:文本编码直接解码;失败则回退为字节
     try {
       return value.asString;
     } catch (_) {
       return value.bytes;
     }
+  }
+
+  /// money 的 OID
+  static const _moneyOid = 790;
+
+  /// int64 分(大端,2 位小数,C/多数 locale)→ 干净小数字符串
+  static String _formatMoneyCents(List<int> bytes) {
+    final cents = ByteData.sublistView(Uint8List.fromList(bytes)).getInt64(0);
+    final neg = cents < 0;
+    final abs = cents.abs();
+    final frac = (abs % 100).toString().padLeft(2, '0');
+    return '${neg ? '-' : ''}${abs ~/ 100}.$frac';
   }
 
   /// time → 'HH:MM:SS(.ffffff)'(24:00:00 也是合法 time 输入)

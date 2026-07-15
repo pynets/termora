@@ -94,7 +94,19 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
   String? _error;
   final ScrollController _logScroll = ScrollController();
 
-  bool get _needsMeta => widget.mode != DbTransferMode.importScript;
+  bool get _needsMeta =>
+      widget.mode != DbTransferMode.importScript &&
+      widget.mode != DbTransferMode.importDump;
+
+  /// 是否为「导入类」模式(选文件而非浏览源库)
+  bool get _isImport =>
+      widget.mode == DbTransferMode.importScript ||
+      widget.mode == DbTransferMode.importDump;
+
+  /// 是否为便携归档(dump/store)模式
+  bool get _isDump =>
+      widget.mode == DbTransferMode.exportDump ||
+      widget.mode == DbTransferMode.importDump;
 
   @override
   void initState() {
@@ -275,6 +287,36 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
             isCancelled: () => _cancelRequested,
           );
 
+        case DbTransferMode.exportDump:
+          final path = await FilePicker.saveFile(
+            dialogTitle: tr('导出便携归档'),
+            fileName: '$_fileBase.tdump',
+          );
+          if (path == null) {
+            setState(() => _running = false);
+            return;
+          }
+          final finalPath = path.endsWith('.tdump') ? path : '$path.tdump';
+          summary = await DbTransferService.exportToDump(
+            source: widget.source,
+            schemaTables: _wholeDatabase ? const {} : _buildSchemaTables(),
+            wholeDatabase: _wholeDatabase,
+            filePath: finalPath,
+            includeData: _includeData,
+            onProgress: _appendLog,
+            isCancelled: () => _cancelRequested,
+          );
+          _appendLog(DbTransferProgress(message: finalPath));
+
+        case DbTransferMode.importDump:
+          summary = await DbTransferService.importDump(
+            target: widget.source,
+            filePath: _scriptPath!,
+            overwrite: _overwrite,
+            onProgress: _appendLog,
+            isCancelled: () => _cancelRequested,
+          );
+
         case DbTransferMode.migrate:
           summary = await DbTransferService.migrate(
             source: widget.source,
@@ -319,13 +361,15 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
   Future<void> _saveAsTask() async {
     // 导出任务需要固定输出路径(可含 {ts} 占位符 → 每次跑替换成时间戳)
     String? exportPath;
-    if (widget.mode == DbTransferMode.export) {
+    if (widget.mode == DbTransferMode.export ||
+        widget.mode == DbTransferMode.exportDump) {
+      final ext = _isDump ? 'tdump' : 'sql';
       final picked = await FilePicker.saveFile(
-        dialogTitle: tr('任务导出脚本保存到(文件名可用 {ts} 表示时间戳)'),
-        fileName: '$_fileBase-{ts}.sql',
+        dialogTitle: tr('任务导出文件保存到(文件名可用 {ts} 表示时间戳)'),
+        fileName: '$_fileBase-{ts}.$ext',
       );
       if (picked == null || !mounted) return;
-      exportPath = picked.endsWith('.sql') ? picked : '$picked.sql';
+      exportPath = picked.endsWith('.$ext') ? picked : '$picked.$ext';
     }
 
     final name = await _promptText(tr('任务名称'), _defaultTaskName());
@@ -340,8 +384,8 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
           ? _targetConfig?.id
           : null,
       filePath: switch (widget.mode) {
-        DbTransferMode.export => exportPath,
-        DbTransferMode.importScript => _scriptPath,
+        DbTransferMode.export || DbTransferMode.exportDump => exportPath,
+        DbTransferMode.importScript || DbTransferMode.importDump => _scriptPath,
         DbTransferMode.migrate => null,
       },
       exportDialectName: widget.mode == DbTransferMode.export
@@ -373,7 +417,8 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
     final scope = _scopeLabel;
     return switch (widget.mode) {
       DbTransferMode.export => '${widget.source.name} $scope ${tr('导出')}',
-      DbTransferMode.importScript =>
+      DbTransferMode.exportDump => '${widget.source.name} $scope ${tr('归档')}',
+      DbTransferMode.importScript || DbTransferMode.importDump =>
         '${widget.source.name} ${tr('导入')} ${_scriptPath?.split('/').last ?? ''}',
       DbTransferMode.migrate =>
         '${widget.source.name} → ${_targetConfig?.name ?? '?'} $scope',
@@ -416,8 +461,9 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
         (_singleSchema != null && _selected.isNotEmpty) ||
         _selectedSchemas.length > 1;
     return switch (widget.mode) {
-      DbTransferMode.export => hasSource,
-      DbTransferMode.importScript => _scriptPath != null,
+      DbTransferMode.export || DbTransferMode.exportDump => hasSource,
+      DbTransferMode.importScript ||
+      DbTransferMode.importDump => _scriptPath != null,
       DbTransferMode.migrate => hasSource && _targetConfig != null,
     };
   }
@@ -433,6 +479,16 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
           icon: LucideIcons.fileUp,
           title: tr('导入 SQL 脚本'),
           subtitle: tr2('在「{0}」上逐条执行脚本语句', [widget.source.name]),
+        ),
+        DbTransferMode.exportDump => (
+          icon: LucideIcons.package,
+          title: tr('导出便携归档'),
+          subtitle: tr2('把「{0}」的结构和数据打包成 .tdump,可导入任意引擎', [widget.source.name]),
+        ),
+        DbTransferMode.importDump => (
+          icon: LucideIcons.packageOpen,
+          title: tr('从归档导入'),
+          subtitle: tr2('把 .tdump 归档还原到「{0}」,自动映射类型', [widget.source.name]),
         ),
         DbTransferMode.migrate => (
           icon: LucideIcons.arrowRightLeft,
@@ -503,10 +559,7 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (widget.mode == DbTransferMode.importScript)
-                        _buildImportBody()
-                      else
-                        _buildSelectBody(),
+                      if (_isImport) _buildImportBody() else _buildSelectBody(),
                       if (_log.isNotEmpty || _running) ...[
                         const SizedBox(height: 12),
                         _buildProgress(),
@@ -590,18 +643,26 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _label(tr('SQL 脚本文件')),
+        _label(_isDump ? tr('便携归档文件') : tr('SQL 脚本文件')),
         OutlinedButton.icon(
           onPressed: _running ? null : _pickScript,
           icon: const Icon(LucideIcons.folderOpen, size: 14),
           label: Text(
-            name ?? tr('选择 .sql 文件'),
+            name ?? (_isDump ? tr('选择 .tdump 文件') : tr('选择 .sql 文件')),
             overflow: TextOverflow.ellipsis,
           ),
         ),
+        if (_isDump)
+          _buildToggle(
+            value: _overwrite,
+            title: tr('覆盖目标同名表(DROP TABLE IF EXISTS)'),
+            onChanged: (v) => setState(() => _overwrite = v),
+          ),
         const SizedBox(height: 8),
         Text(
-          tr('脚本会按语句拆分后在目标连接上逐条执行;任一语句失败即中止。'),
+          _isDump
+              ? tr('归档里存了每张表的完整结构和原始行值,导入时按目标引擎重新建表并写入。')
+              : tr('脚本会按语句拆分后在目标连接上逐条执行;任一语句失败即中止。'),
           style: TextStyle(fontSize: 11, color: AppTheme.subtleTextColor),
         ),
       ],
@@ -611,7 +672,7 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
   Future<void> _pickScript() async {
     final initialDirectory = await FilePickerHelper.getInitialDirectory();
     final result = await FilePicker.pickFiles(
-      dialogTitle: tr('选择 SQL 脚本'),
+      dialogTitle: _isDump ? tr('选择便携归档') : tr('选择 SQL 脚本'),
       initialDirectory: initialDirectory,
     );
     final path = result?.files.firstOrNull?.path;

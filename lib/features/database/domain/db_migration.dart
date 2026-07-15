@@ -100,8 +100,7 @@ class DbMigration {
         if (RegExp(r'^(numeric|decimal|money)').hasMatch(lower)) {
           return DbGenericType.decimal;
         }
-        if (RegExp(r'^(real|float4|double precision|float8)')
-            .hasMatch(lower)) {
+        if (RegExp(r'^(real|float4|double precision|float8)').hasMatch(lower)) {
           return DbGenericType.double_;
         }
         if (lower.startsWith('bool')) return DbGenericType.boolean;
@@ -113,12 +112,16 @@ class DbMigration {
         return DbGenericType.text;
 
       case DbEngine.clickhouse:
-        if (RegExp(r'^(u?int(8|16|32))$', caseSensitive: false)
-            .hasMatch(lower)) {
+        if (RegExp(
+          r'^(u?int(8|16|32))$',
+          caseSensitive: false,
+        ).hasMatch(lower)) {
           return DbGenericType.integer;
         }
-        if (RegExp(r'^(u?int(64|128|256))$', caseSensitive: false)
-            .hasMatch(lower)) {
+        if (RegExp(
+          r'^(u?int(64|128|256))$',
+          caseSensitive: false,
+        ).hasMatch(lower)) {
           return DbGenericType.bigint;
         }
         if (lower.startsWith('float')) return DbGenericType.double_;
@@ -208,8 +211,55 @@ class DbMigration {
     DbEngine target,
     DbMigrationColumn column,
   ) {
-    if (source == target) return column.sourceType;
+    if (source == target) {
+      // 同引擎沿用原始类型,但把过时写法现代化(pg)
+      if (target == DbEngine.postgres) {
+        return _modernizePgType(column.sourceType);
+      }
+      return column.sourceType;
+    }
     return typeFor(target, column.generic);
+  }
+
+  /// pg 旧写法现代化:char(n)/bpchar → text(去定长填充语义);money → numeric(19,2)
+  static String _modernizePgType(String type) {
+    final t = type.trim();
+    final lower = t.toLowerCase();
+    if (lower.startsWith('character') &&
+        !lower.startsWith('character varying')) {
+      return 'text';
+    }
+    if (lower == 'bpchar' || lower.startsWith('bpchar(')) return 'text';
+    if (lower == 'money') return 'numeric(19,2)';
+    return t;
+  }
+
+  /// pg money 类型(值形如 "$1,234.56",迁移时清洗成纯小数)
+  static bool isMoneyType(String? type) =>
+      type != null && type.trim().toLowerCase() == 'money';
+
+  /// pg 定长字符类型 char(n)/bpchar(迁 text 时去尾部填充空格)
+  static bool isFixedCharType(String? type) {
+    if (type == null) return false;
+    final lower = type.trim().toLowerCase();
+    return (lower.startsWith('character') &&
+            !lower.startsWith('character varying')) ||
+        lower == 'bpchar' ||
+        lower.startsWith('bpchar(');
+  }
+
+  /// money 文本 → 纯小数字符串:去货币符/千分位;括号或前导负号视为负。
+  static String cleanMoney(String s) {
+    var t = s.trim();
+    var neg = false;
+    if (t.startsWith('(') && t.endsWith(')')) {
+      neg = true;
+      t = t.substring(1, t.length - 1);
+    }
+    if (t.contains('-')) neg = true;
+    t = t.replaceAll(RegExp(r'[^\d.]'), ''); // 去 $、逗号、空格、负号
+    if (t.isEmpty) return '0';
+    return neg ? '-$t' : t;
   }
 
   // ══════════════ 标识符 / 字面量 ══════════════
@@ -230,7 +280,8 @@ class DbMigration {
   /// 目标为 SQLite 无 schema 概念 → 返回 null。
   static String? buildCreateSchema(DbEngine target, String schema) =>
       switch (target) {
-        DbEngine.postgres => 'CREATE SCHEMA IF NOT EXISTS ${ident(target, schema)}',
+        DbEngine.postgres =>
+          'CREATE SCHEMA IF NOT EXISTS ${ident(target, schema)}',
         DbEngine.clickhouse =>
           'CREATE DATABASE IF NOT EXISTS ${ident(target, schema)}',
         DbEngine.sqlite => null,
@@ -239,11 +290,7 @@ class DbMigration {
   /// 值 → 目标引擎的 SQL 字面量。
   /// [columnType] 为目标列类型(可空):pg 数组列(`…[]`)的 List 值
   /// 需要生成 `'{…}'` 数组字面量而不是 JSON 文本。
-  static String literal(
-    DbEngine target,
-    Object? value, {
-    String? columnType,
-  }) {
+  static String literal(DbEngine target, Object? value, {String? columnType}) {
     // pg 数组列:List → '{…}' 数组字面量(空数组 '{}';JSON 的 '[]' 会报 22P02)
     if (value is List &&
         value is! Uint8List &&
@@ -466,8 +513,7 @@ class DbMigration {
           target == DbEngine.postgres &&
           c.defaultValue != null;
       // 自增列(serial 的 nextval 默认 / 现代 IDENTITY 列)统一重建为 IDENTITY
-      final identity =
-          target == DbEngine.postgres && _isPgAutoInc(source, c);
+      final identity = target == DbEngine.postgres && _isPgAutoInc(source, c);
       final defaultExpr = (identity || c.isGenerated)
           ? null
           : _defaultExprFor(source, target, c);
@@ -477,9 +523,7 @@ class DbMigration {
         // CH 用 Nullable() 包装表达可空;主键列(排序键)不允许 Nullable。
         // 同引擎迁移时原始类型可能已带 Nullable(...),不能再包一层。
         final wrapped =
-            (c.nullable &&
-                !c.isPrimaryKey &&
-                !type.startsWith('Nullable('))
+            (c.nullable && !c.isPrimaryKey && !type.startsWith('Nullable('))
             ? 'Nullable($type)'
             : type;
         // CH 列注释内联
@@ -491,9 +535,7 @@ class DbMigration {
         final notNull = (!c.nullable || c.isPrimaryKey) ? ' NOT NULL' : '';
         // pg 的 serial(default nextval('…_seq'))原样带过去会因目标端
         // 没有该序列而失败 → 转成自带序列的 IDENTITY
-        final identitySql = identity
-            ? ' GENERATED BY DEFAULT AS IDENTITY'
-            : '';
+        final identitySql = identity ? ' GENERATED BY DEFAULT AS IDENTITY' : '';
         final generatedSql = generatedPg
             ? ' GENERATED ALWAYS AS (${c.defaultValue}) STORED'
             : '';
@@ -562,7 +604,8 @@ class DbMigration {
 
   /// pg 自增列:serial(nextval 默认)或现代 IDENTITY 列
   static bool _isPgAutoInc(DbEngine source, DbMigrationColumn c) =>
-      source == DbEngine.postgres && (c.isIdentity || _isSerialDefault(source, c));
+      source == DbEngine.postgres &&
+      (c.isIdentity || _isSerialDefault(source, c));
 
   /// 数据装载后把自增序列拨到 max(列) —— 否则序列仍停在 1,
   /// 下一次插入会撞已迁数据的主键。pg→pg 才需要(生成 setval 语句)。
@@ -662,8 +705,14 @@ class DbMigration {
           ' ON $t USING ',
         );
         def = def
-            .replaceFirst('CREATE UNIQUE INDEX ', 'CREATE UNIQUE INDEX IF NOT EXISTS ')
-            .replaceFirst(RegExp(r'^CREATE INDEX '), 'CREATE INDEX IF NOT EXISTS ');
+            .replaceFirst(
+              'CREATE UNIQUE INDEX ',
+              'CREATE UNIQUE INDEX IF NOT EXISTS ',
+            )
+            .replaceFirst(
+              RegExp(r'^CREATE INDEX '),
+              'CREATE INDEX IF NOT EXISTS ',
+            );
         statements.add(def);
       }
     } else if (target == DbEngine.sqlite && sourceTable == targetTable) {
@@ -672,8 +721,14 @@ class DbMigration {
         if (!def.toUpperCase().startsWith('CREATE')) continue; // 自动索引无 DDL
         statements.add(
           def
-              .replaceFirst('CREATE UNIQUE INDEX ', 'CREATE UNIQUE INDEX IF NOT EXISTS ')
-              .replaceFirst(RegExp(r'^CREATE INDEX '), 'CREATE INDEX IF NOT EXISTS '),
+              .replaceFirst(
+                'CREATE UNIQUE INDEX ',
+                'CREATE UNIQUE INDEX IF NOT EXISTS ',
+              )
+              .replaceFirst(
+                RegExp(r'^CREATE INDEX '),
+                'CREATE INDEX IF NOT EXISTS ',
+              ),
         );
       }
     }
@@ -731,10 +786,7 @@ class DbMigration {
         (columnTypes != null && i < columnTypes.length) ? columnTypes[i] : null;
     final values = [
       for (final row in rows)
-        '(${[
-          for (var i = 0; i < row.length; i++)
-            literal(target, row[i], columnType: typeAt(i)),
-        ].join(', ')})',
+        '(${[for (var i = 0; i < row.length; i++) literal(target, row[i], columnType: typeAt(i))].join(', ')})',
     ].join(',\n');
     return 'INSERT INTO ${qualified(target, schema, table)} ($cols) VALUES\n$values';
   }

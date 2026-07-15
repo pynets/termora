@@ -64,6 +64,7 @@ class WorkspaceStore {
   WorkspaceStore._();
 
   static const _activeFeatureKey = 'app.active_feature';
+  static const _railWidthKey = 'app.rail_width';
   static const _sqlTextKey = 'database.sql_text';
   static const _workspacePrefix = 'database.workspace.';
   static const _lastConnectionKey = 'database.last_connection';
@@ -78,6 +79,18 @@ class WorkspaceStore {
   static Future<void> saveActiveFeature(int index) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_activeFeatureKey, index);
+  }
+
+  // ── 左侧导航栏宽度(可拖拽)──
+
+  static Future<double?> loadRailWidth() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_railWidthKey);
+  }
+
+  static Future<void> saveRailWidth(double width) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_railWidthKey, width);
   }
 
   // ── SQL 编辑器文本 ──

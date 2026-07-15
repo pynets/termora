@@ -399,6 +399,8 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
       ('refresh', tr('刷新元数据'), LucideIcons.refreshCw),
       ('export', tr('导出 SQL 脚本'), LucideIcons.fileDown),
       ('import', tr('导入 SQL 脚本'), LucideIcons.fileUp),
+      ('dump', tr('导出便携归档'), LucideIcons.package),
+      ('store', tr('从归档导入'), LucideIcons.packageOpen),
       ('migrate', tr('迁移到其它连接'), LucideIcons.arrowRightLeft),
       ('backup', tr('备份整库'), LucideIcons.databaseBackup),
       ('edit', tr('编辑连接'), LucideIcons.pencilLine),
@@ -426,6 +428,18 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
             context,
             source: config,
             mode: DbTransferMode.importScript,
+          );
+        case 'dump':
+          showTransferDialog(
+            context,
+            source: config,
+            mode: DbTransferMode.exportDump,
+          );
+        case 'store':
+          showTransferDialog(
+            context,
+            source: config,
+            mode: DbTransferMode.importDump,
           );
         case 'migrate':
           showTransferDialog(
@@ -756,8 +770,11 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(LucideIcons.plugZap,
-                        size: 14, color: AppTheme.successColor),
+                    Icon(
+                      LucideIcons.plugZap,
+                      size: 14,
+                      color: AppTheme.successColor,
+                    ),
                     const SizedBox(width: 7),
                     Text(
                       config.name,
@@ -772,15 +789,20 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                       Text(
                         '${session.config?.engine.label ?? ''} ${session.serverVersion}',
                         style: TextStyle(
-                            fontSize: 11.5, color: AppTheme.subtleTextColor),
+                          fontSize: 11.5,
+                          color: AppTheme.subtleTextColor,
+                        ),
                       ),
                   ],
                 ),
                 IconButton(
                   tooltip: tr('断开连接'),
                   visualDensity: VisualDensity.compact,
-                  icon: Icon(LucideIcons.unplug,
-                      size: 15, color: AppTheme.errorColor),
+                  icon: Icon(
+                    LucideIcons.unplug,
+                    size: 15,
+                    color: AppTheme.errorColor,
+                  ),
                   onPressed: () => ref
                       .read(dbSessionProvider.notifier)
                       .disconnect(id: config.id, userInitiated: true),
@@ -828,8 +850,7 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                 active: session.activeTab == i,
                 onTap: () =>
                     ref.read(dbSessionProvider.notifier).activateTab(i),
-                onClose: () =>
-                    ref.read(dbSessionProvider.notifier).closeTab(i),
+                onClose: () => ref.read(dbSessionProvider.notifier).closeTab(i),
               ),
           ],
         ),
@@ -976,7 +997,9 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                       Text(
                         pageInfo(),
                         style: TextStyle(
-                            fontSize: 11, color: AppTheme.subtleTextColor),
+                          fontSize: 11,
+                          color: AppTheme.subtleTextColor,
+                        ),
                       ),
                     const SizedBox(width: 10),
                     // 全行过滤(BigQuery 式快速过滤,Enter 提交)
@@ -987,21 +1010,25 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                         child: TextField(
                           controller: _filterController,
                           style: TextStyle(
-                              fontSize: 12, color: AppTheme.headingColor),
+                            fontSize: 12,
+                            color: AppTheme.headingColor,
+                          ),
                           decoration: InputDecoration(
                             hintText: tr('过滤(全行匹配,Enter)'),
                             hintStyle: TextStyle(
                               fontSize: 11.5,
-                              color: AppTheme.subtleTextColor
-                                  .withValues(alpha: 0.7),
+                              color: AppTheme.subtleTextColor.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                             prefixIcon: Icon(
                               LucideIcons.listFilter,
                               size: 13,
                               color: AppTheme.subtleTextColor,
                             ),
-                            prefixIconConstraints:
-                                const BoxConstraints(minWidth: 28),
+                            prefixIconConstraints: const BoxConstraints(
+                              minWidth: 28,
+                            ),
                             suffixIcon: tab.filter.isEmpty
                                 ? null
                                 : InkWell(
@@ -1015,11 +1042,13 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                                       color: AppTheme.subtleTextColor,
                                     ),
                                   ),
-                            suffixIconConstraints:
-                                const BoxConstraints(minWidth: 24),
+                            suffixIconConstraints: const BoxConstraints(
+                              minWidth: 24,
+                            ),
                             isDense: true,
-                            contentPadding:
-                                const EdgeInsets.symmetric(vertical: 6),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 6,
+                            ),
                             filled: true,
                             fillColor: AppTheme.mutedSurfaceColor,
                             border: OutlineInputBorder(
@@ -1046,10 +1075,10 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                         onPressed: output == null || output.rows.isEmpty
                             ? null
                             : () => showExportDialog(
-                                  context,
-                                  output: output,
-                                  tableName: tab.table,
-                                ),
+                                context,
+                                output: output,
+                                tableName: tab.table,
+                              ),
                       ),
                       IconButton(
                         tooltip: tr('上一页'),
@@ -1178,7 +1207,9 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           child: empty
               ? Center(
                   child: Text(
-                    tab.filter.isEmpty ? tr('表中没有数据') : tr2('没有匹配「{0}」的行', [tab.filter]),
+                    tab.filter.isEmpty
+                        ? tr('表中没有数据')
+                        : tr2('没有匹配「{0}」的行', [tab.filter]),
                     style: TextStyle(
                       fontSize: 12.5,
                       color: AppTheme.subtleTextColor,
@@ -1255,14 +1286,17 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                       icon: const Icon(LucideIcons.plus, size: 14),
                       label: Text(tr('新增行'), style: TextStyle(fontSize: 12)),
                       style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact),
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ),
                     if (!dirty) ...[
                       const SizedBox(width: 8),
                       Text(
                         tr('双击编辑 · Tab/Enter 移动 · Esc 取消'),
                         style: TextStyle(
-                            fontSize: 11, color: AppTheme.subtleTextColor),
+                          fontSize: 11,
+                          color: AppTheme.subtleTextColor,
+                        ),
                       ),
                     ],
                   ],
@@ -1289,11 +1323,14 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                       TextButton(
                         onPressed: saving ? null : onRevert,
                         style: TextButton.styleFrom(
-                            visualDensity: VisualDensity.compact),
+                          visualDensity: VisualDensity.compact,
+                        ),
                         child: Text(
                           tr('撤销全部'),
                           style: TextStyle(
-                              fontSize: 12, color: AppTheme.subtleTextColor),
+                            fontSize: 12,
+                            color: AppTheme.subtleTextColor,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -1303,12 +1340,15 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                             ? const SizedBox(
                                 width: 12,
                                 height: 12,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(LucideIcons.save, size: 13),
-                        label:
-                            Text(tr('保存 ⌘S'), style: TextStyle(fontSize: 12)),
+                        label: Text(
+                          tr('保存 ⌘S'),
+                          style: TextStyle(fontSize: 12),
+                        ),
                         style: FilledButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                         ),
@@ -1339,7 +1379,6 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
     }
     return TableStructureView(structure: structure);
   }
-
 
   /// 批量提交结果反馈
   void _showEditResult(String? error, String what) {
@@ -1445,7 +1484,8 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
         ),
       );
     }
-    if (!output.hasRows || (output.rows.isEmpty && sql.edits.addedRows.isEmpty)) {
+    if (!output.hasRows ||
+        (output.rows.isEmpty && sql.edits.addedRows.isEmpty)) {
       return Center(
         child: Text(
           output.hasRows ? tr('查询没有返回数据') : tr('语句执行成功,无返回结果集'),

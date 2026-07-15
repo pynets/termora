@@ -21,10 +21,7 @@ void main() {
         DbGenericType.text,
       );
       expect(
-        DbMigration.mapToGeneric(
-          DbEngine.postgres,
-          'timestamp with time zone',
-        ),
+        DbMigration.mapToGeneric(DbEngine.postgres, 'timestamp with time zone'),
         DbGenericType.datetime,
       );
       expect(
@@ -122,17 +119,11 @@ void main() {
       final bytes = Uint8List.fromList([0xde, 0xad]);
       expect(DbMigration.literal(DbEngine.postgres, bytes), r"'\xdead'");
       expect(DbMigration.literal(DbEngine.sqlite, bytes), "X'dead'");
-      expect(
-        DbMigration.literal(DbEngine.clickhouse, bytes),
-        "unhex('dead')",
-      );
+      expect(DbMigration.literal(DbEngine.clickhouse, bytes), "unhex('dead')");
     });
 
     test('json 对象序列化为文本', () {
-      expect(
-        DbMigration.literal(DbEngine.postgres, {'a': 1}),
-        '\'{"a":1}\'',
-      );
+      expect(DbMigration.literal(DbEngine.postgres, {'a': 1}), '\'{"a":1}\'');
     });
 
     test('pg 数组列:List → {…} 数组字面量(修 22P02)', () {
@@ -142,20 +133,20 @@ void main() {
         "'{}'",
       );
       expect(
-        DbMigration.literal(
-          DbEngine.postgres,
-          ['a', 'b'],
-          columnType: 'text[]',
-        ),
+        DbMigration.literal(DbEngine.postgres, [
+          'a',
+          'b',
+        ], columnType: 'text[]'),
         '\'{"a","b"}\'',
       );
       // 元素转义:双引号/反斜杠;单引号按 SQL 规则双写;NULL 元素
       expect(
-        DbMigration.literal(
-          DbEngine.postgres,
-          ['x "q"', r'a\b', "it's", null],
-          columnType: 'text[]',
-        ),
+        DbMigration.literal(DbEngine.postgres, [
+          'x "q"',
+          r'a\b',
+          "it's",
+          null,
+        ], columnType: 'text[]'),
         '\'{"x \\"q\\"","a\\\\b","it\'\'s",NULL}\'',
       );
       // 数字数组 + 多维
@@ -164,14 +155,10 @@ void main() {
         '\'{"1","2"}\'',
       );
       expect(
-        DbMigration.literal(
-          DbEngine.postgres,
-          [
-            [1, 2],
-            [3, 4],
-          ],
-          columnType: 'integer[]',
-        ),
+        DbMigration.literal(DbEngine.postgres, [
+          [1, 2],
+          [3, 4],
+        ], columnType: 'integer[]'),
         '\'{{"1","2"},{"3","4"}}\'',
       );
       // 没有列类型 / jsonb 列:保持 JSON 文本
@@ -243,11 +230,13 @@ void main() {
 
       // 长度对不上 → 回落默认 bytea 路径(不崩)
       expect(
-        DbMigration.literal(
-          DbEngine.postgres,
-          [0x00, 0x03, 0x00, 0x00, 0x01],
-          columnType: 'vector(3)',
-        ),
+        DbMigration.literal(DbEngine.postgres, [
+          0x00,
+          0x03,
+          0x00,
+          0x00,
+          0x01,
+        ], columnType: 'vector(3)'),
         startsWith(r"'\x"),
       );
       // 无类型信息不受影响
@@ -317,7 +306,10 @@ void main() {
         'events',
         columns,
       );
-      expect(statements.first, 'DROP TABLE IF EXISTS "events"'); // sqlite 无 CASCADE
+      expect(
+        statements.first,
+        'DROP TABLE IF EXISTS "events"',
+      ); // sqlite 无 CASCADE
       expect(statements[1], contains('"id" INTEGER NOT NULL'));
       expect(statements[1], contains('"note" TEXT'));
       expect(statements[1], contains('PRIMARY KEY ("id")'));
@@ -402,10 +394,7 @@ void main() {
 
     test('qualified:带/不带 schema', () {
       expect(DbMigration.qualified(DbEngine.postgres, null, 't'), '"t"');
-      expect(
-        DbMigration.qualified(DbEngine.postgres, 'app', 't'),
-        '"app"."t"',
-      );
+      expect(DbMigration.qualified(DbEngine.postgres, 'app', 't'), '"app"."t"');
       expect(
         DbMigration.qualified(DbEngine.clickhouse, 'app', 't'),
         '`app`.`t`',
@@ -705,6 +694,46 @@ void main() {
         targetTable: 'users',
       );
       expect(lite.single, 'CREATE INDEX IF NOT EXISTS idx_n ON users (name)');
+    });
+  });
+
+  group('旧语法现代化(char/money)', () {
+    DbMigrationColumn col(String type) => DbMigrationColumn(
+      name: 'c',
+      sourceType: type,
+      generic: DbGenericType.text,
+      nullable: true,
+      isPrimaryKey: false,
+    );
+
+    test('同引擎 pg:char(n)/bpchar → text;money → numeric(19,2)', () {
+      String t(String type) => DbMigration.targetColumnType(
+        DbEngine.postgres,
+        DbEngine.postgres,
+        col(type),
+      );
+      expect(t('character(10)'), 'text');
+      expect(t('character(1)'), 'text');
+      expect(t('bpchar'), 'text');
+      expect(t('money'), 'numeric(19,2)');
+      // varchar / 普通类型不动
+      expect(t('character varying(20)'), 'character varying(20)');
+      expect(t('text'), 'text');
+      expect(t('integer'), 'integer');
+    });
+
+    test('类型判定 + money 值清洗', () {
+      expect(DbMigration.isMoneyType('money'), isTrue);
+      expect(DbMigration.isMoneyType('numeric'), isFalse);
+      expect(DbMigration.isFixedCharType('character(5)'), isTrue);
+      expect(DbMigration.isFixedCharType('character varying'), isFalse);
+      expect(DbMigration.isFixedCharType('text'), isFalse);
+
+      expect(DbMigration.cleanMoney(r'$1,234.56'), '1234.56');
+      expect(DbMigration.cleanMoney(r'-$1,234.56'), '-1234.56');
+      expect(DbMigration.cleanMoney(r'($1,234.56)'), '-1234.56');
+      expect(DbMigration.cleanMoney(r'$0.00'), '0.00');
+      expect(DbMigration.cleanMoney(r'$1,000,000.00'), '1000000.00');
     });
   });
 

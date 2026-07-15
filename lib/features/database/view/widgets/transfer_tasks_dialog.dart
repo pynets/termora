@@ -23,10 +23,9 @@ Future<void> showTransferTasksDialog(BuildContext context) {
     switch (mode) {
       DbTransferMode.export => (icon: LucideIcons.fileDown, label: '导出'),
       DbTransferMode.importScript => (icon: LucideIcons.fileUp, label: '导入'),
-      DbTransferMode.migrate => (
-        icon: LucideIcons.arrowRightLeft,
-        label: '迁移',
-      ),
+      DbTransferMode.exportDump => (icon: LucideIcons.package, label: '归档'),
+      DbTransferMode.importDump => (icon: LucideIcons.packageOpen, label: '还原'),
+      DbTransferMode.migrate => (icon: LucideIcons.arrowRightLeft, label: '迁移'),
     };
 
 String _fmtTime(int ms) {
@@ -216,9 +215,8 @@ class _TaskCard extends ConsumerWidget {
               _iconBtn(
                 LucideIcons.trash2,
                 tr('删除'),
-                () => ref
-                    .read(dbTransferTasksProvider.notifier)
-                    .remove(task.id),
+                () =>
+                    ref.read(dbTransferTasksProvider.notifier).remove(task.id),
                 color: AppTheme.errorColor,
               ),
             ],
@@ -478,7 +476,9 @@ class _TaskRunnerDialogState extends ConsumerState<_TaskRunnerDialog> {
                   FilledButton.icon(
                     onPressed: _running ? null : _run,
                     icon: const Icon(LucideIcons.rotateCcw, size: 14),
-                    label: Text(_done || _error != null ? tr('再次运行') : tr('运行')),
+                    label: Text(
+                      _done || _error != null ? tr('再次运行') : tr('运行'),
+                    ),
                   ),
                 ],
               ),
@@ -563,10 +563,7 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
                     const SizedBox(width: 8),
                     Text(
                       tr('分钟一次'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.bodyColor,
-                      ),
+                      style: TextStyle(fontSize: 12, color: AppTheme.bodyColor),
                     ),
                   ],
                 ),
@@ -577,12 +574,7 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
                 padding: const EdgeInsets.only(left: 28),
                 child: Row(
                   children: [
-                    _spin(
-                      _hour,
-                      23,
-                      (v) => setState(() => _hour = v),
-                      tr('时'),
-                    ),
+                    _spin(_hour, 23, (v) => setState(() => _hour = v), tr('时')),
                     const SizedBox(width: 12),
                     _spin(
                       _minute,
@@ -626,16 +618,17 @@ class _ScheduleEditorState extends State<_ScheduleEditor> {
       child: Row(
         children: [
           Icon(
-            _kind == kind
-                ? LucideIcons.circleDot
-                : LucideIcons.circle,
+            _kind == kind ? LucideIcons.circleDot : LucideIcons.circle,
             size: 15,
             color: _kind == kind
                 ? AppTheme.brandColor
                 : AppTheme.subtleTextColor,
           ),
           const SizedBox(width: 10),
-          Text(label, style: TextStyle(fontSize: 13, color: AppTheme.bodyColor)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 13, color: AppTheme.bodyColor),
+          ),
         ],
       ),
     ),

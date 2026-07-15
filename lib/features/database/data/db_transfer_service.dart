@@ -1,11 +1,24 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:termora/features/database/data/db_service.dart';
 import 'package:termora/features/database/data/postgres_service.dart';
+import 'package:termora/features/database/domain/db_dump.dart';
 import 'package:termora/features/database/domain/db_etl.dart';
 import 'package:termora/features/database/domain/db_migration.dart';
 import 'package:termora/features/database/domain/db_models.dart';
 import 'package:termora/features/database/domain/db_transfer_task.dart';
+
+/// 把 gzip 分块编码器的输出转写进 [IOSink],但不代管其关闭
+/// (归档写完由 [DbTransferService] 自己 flush/close 文件)。
+class _ByteSinkAdapter implements Sink<List<int>> {
+  _ByteSinkAdapter(this._sink);
+  final IOSink _sink;
+  @override
+  void add(List<int> data) => _sink.add(data);
+  @override
+  void close() {}
+}
 
 /// 传输进度(导出/导入/迁移共用):[done]/[total] 是表级进度,
 /// [message] 是追加到日志区的一行文本。
@@ -251,6 +264,9 @@ class DbTransferService {
           final generatedCols = rule == null
               ? _generatedColumns(source.engine, targetEngine, structure)
               : const <String>{};
+          final valueTx = rule == null
+              ? _valueTransforms(source.engine, structure)
+              : const <String, Object? Function(Object?)>{};
           totalRows += await _forEachBatch(
             conn,
             srcSchema,
@@ -267,10 +283,10 @@ class DbTransferService {
                 outRows,
                 generatedCols,
               );
+              // 现代化配套值清洗(money/char)
+              outRows = _applyValueTransforms(outColumns, outRows, valueTx);
               sink!.writeln(
-                '${DbMigration.buildInsert(targetEngine, targetTable, outColumns, outRows, schema: targetSchema, columnTypes: [
-                  for (final c in outColumns) typeByName[c] ?? '',
-                ])};',
+                '${DbMigration.buildInsert(targetEngine, targetTable, outColumns, outRows, schema: targetSchema, columnTypes: [for (final c in outColumns) typeByName[c] ?? ''])};',
               );
             },
           );
@@ -297,6 +313,340 @@ class DbTransferService {
     } finally {
       await sink?.close();
       await conn.close();
+    }
+  }
+
+  // ══════════════ 便携归档导出(dump)══════════════
+
+  /// 把源库导出为 Termora 便携归档(.tdump:gzip 压缩的 JSONL)。
+  /// 与 SQL 脚本不同,归档「引擎中立」——只存源结构 + 原始规范化行值,
+  /// 不预生成 DDL/字面量;类型映射、生成列剔除、序列复位等目标相关处理
+  /// 全部留到 [importDump] 时按实际目标引擎再做,于是一份归档可导入任意引擎。
+  static Future<DbTransferSummary> exportToDump({
+    required DbConnectionConfig source,
+    String? schema,
+    List<String> tables = const [],
+    Map<String, List<String>> schemaTables = const {},
+    bool wholeDatabase = false,
+    required String filePath,
+    bool includeData = true,
+    DbTransferOnProgress? onProgress,
+    DbTransferCancelled? isCancelled,
+  }) async {
+    final conn = await DbService.open(source);
+    IOSink? fileSink;
+    ByteConversionSink? gzipSink;
+    try {
+      final targets = await _resolveTargets(
+        conn,
+        schema: schema,
+        tables: tables,
+        schemaTables: schemaTables,
+        wholeDatabase: wholeDatabase,
+      );
+      final schemas = {for (final t in targets) t.schema}.toList()..sort();
+
+      fileSink = File(filePath).openWrite();
+      gzipSink = gzip.encoder.startChunkedConversion(
+        _ByteSinkAdapter(fileSink),
+      );
+      void writeRecord(Map<String, Object?> record) {
+        gzipSink!.add(utf8.encode('${jsonEncode(record)}\n'));
+      }
+
+      writeRecord(
+        DbDumpCodec.manifest(
+          createdAtIso: DateTime.now().toIso8601String(),
+          sourceEngineName: source.engine.name,
+          sourceName: source.name,
+          sourceDatabase: source.database,
+          schemas: schemas,
+          tableCount: targets.length,
+        ),
+      );
+
+      var totalRows = 0;
+      for (var i = 0; i < targets.length; i++) {
+        final (schema: srcSchema, table: table) = targets[i];
+        _check(isCancelled);
+        onProgress?.call(
+          DbTransferProgress(
+            message: '$srcSchema.$table',
+            done: i,
+            total: targets.length,
+          ),
+        );
+        final structure = await DbService.fetchTableStructure(
+          conn,
+          srcSchema,
+          table,
+        );
+        writeRecord(
+          DbDumpCodec.tableHeader(
+            index: i,
+            sourceEngineName: source.engine.name,
+            schema: srcSchema,
+            table: table,
+            structure: structure,
+          ),
+        );
+        if (includeData) {
+          totalRows += await _forEachBatch(
+            conn,
+            srcSchema,
+            table,
+            const [],
+            isCancelled,
+            (columnNames, rows) async {
+              writeRecord(
+                DbDumpCodec.rowsBatch(
+                  index: i,
+                  columns: columnNames,
+                  rows: rows,
+                ),
+              );
+            },
+          );
+        }
+      }
+      gzipSink.close(); // 冲刷 gzip 尾块到 fileSink
+      gzipSink = null;
+      await fileSink.flush();
+      onProgress?.call(
+        DbTransferProgress(
+          message: '✓ $totalRows rows',
+          done: targets.length,
+          total: targets.length,
+        ),
+      );
+      return DbTransferSummary(tables: targets.length, rows: totalRows);
+    } finally {
+      gzipSink?.close();
+      await fileSink?.close();
+      await conn.close();
+    }
+  }
+
+  // ══════════════ 便携归档导入(store)══════════════
+
+  /// 把 [filePath] 归档灌入 [target] 连接。复用与 [migrate] 完全一致的建表 /
+  /// 索引 / 约束 / 序列复位 / INSERT 管线——只是「源」换成归档流而非活动库,
+  /// 因此跨引擎、类型映射、生成列处理、自增复位全部自动生效。
+  /// [overwrite] 时先 DROP TABLE IF EXISTS 再建表。
+  static Future<DbTransferSummary> importDump({
+    required DbConnectionConfig target,
+    required String filePath,
+    bool overwrite = true,
+    DbTransferOnProgress? onProgress,
+    DbTransferCancelled? isCancelled,
+  }) async {
+    final targetConn = await DbService.open(target);
+    try {
+      final lines = File(filePath)
+          .openRead()
+          .transform(gzip.decoder)
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      Map<String, dynamic>? manifest;
+      var declaredTables = 0;
+      var preserveSchema = false;
+      var sourceEngine = target.engine;
+      final createdSchemas = <String>{};
+      final ensuredExtensions = <String>{};
+      final deferredConstraints = <String>[];
+      final deferredResets = <String>[];
+
+      // 当前表上下文(随 table 记录更新,供后续 rows 记录复用)
+      String? curTargetSchema;
+      var curTargetTable = '';
+      var curGenerated = const <String>{};
+      var curValueTx = const <String, Object? Function(Object?)>{};
+      var curTypeByName = const <String, String>{};
+
+      var tableCount = 0;
+      var totalRows = 0;
+
+      await for (final line in lines) {
+        _check(isCancelled);
+        if (line.isEmpty) continue;
+        final record = jsonDecode(line) as Map<String, dynamic>;
+
+        if (manifest == null) {
+          DbDumpCodec.validateManifest(record);
+          manifest = record;
+          declaredTables = (record['tableCount'] as num?)?.toInt() ?? 0;
+          sourceEngine = DbEngine.fromName(
+            DbDumpCodec.manifestSourceEngine(record),
+          );
+          final schemas = DbDumpCodec.manifestSchemas(record);
+          preserveSchema =
+              schemas.length > 1 && target.engine != DbEngine.sqlite;
+          continue;
+        }
+
+        switch (record['kind']) {
+          case 'table':
+            tableCount++;
+            final srcSchema = record['schema'] as String? ?? '';
+            final srcTable = record['table'] as String? ?? '';
+            final structure = DbDumpCodec.structureFromJson(record);
+            curTargetTable = srcTable;
+            final targetSchema = preserveSchema ? srcSchema : null;
+            curTargetSchema = targetSchema;
+            onProgress?.call(
+              DbTransferProgress(
+                message: '$srcSchema.$srcTable',
+                done: tableCount,
+                total: declaredTables,
+              ),
+            );
+
+            if (preserveSchema && createdSchemas.add(srcSchema)) {
+              final ddl = DbMigration.buildCreateSchema(
+                target.engine,
+                srcSchema,
+              );
+              if (ddl != null) await DbService.runSql(targetConn, ddl);
+            }
+
+            final columns = [
+              for (final c in structure.columns)
+                DbMigrationColumn.from(sourceEngine, c),
+            ];
+
+            if (target.engine == DbEngine.postgres) {
+              for (final ext in _requiredExtensions(
+                sourceEngine,
+                target.engine,
+                columns,
+              )) {
+                if (!ensuredExtensions.add(ext)) continue;
+                try {
+                  await DbService.runSql(
+                    targetConn,
+                    'CREATE EXTENSION IF NOT EXISTS "$ext"',
+                  );
+                } catch (e) {
+                  onProgress?.call(
+                    DbTransferProgress(message: '! CREATE EXTENSION $ext: $e'),
+                  );
+                }
+              }
+            }
+
+            for (final statement in DbMigration.buildCreateTable(
+              sourceEngine,
+              target.engine,
+              curTargetTable,
+              columns,
+              drop: overwrite,
+              schema: targetSchema,
+              tableComment: structure.comment,
+              constraints: structure.constraints,
+            )) {
+              await DbService.runSql(targetConn, statement);
+            }
+            deferredConstraints.addAll(
+              DbMigration.buildConstraintStatements(
+                sourceEngine,
+                target.engine,
+                structure.constraints,
+                targetTable: curTargetTable,
+                targetSchema: targetSchema,
+                preserveSchema: preserveSchema,
+              ),
+            );
+            deferredResets.addAll(
+              DbMigration.buildResetSequenceStatements(
+                sourceEngine,
+                target.engine,
+                columns,
+                targetTable: curTargetTable,
+                targetSchema: targetSchema,
+              ),
+            );
+            for (final statement in DbMigration.buildIndexStatements(
+              sourceEngine,
+              target.engine,
+              structure.indexes,
+              sourceTable: srcTable,
+              targetTable: curTargetTable,
+              targetSchema: targetSchema,
+            )) {
+              try {
+                await DbService.runSql(targetConn, statement);
+              } catch (e) {
+                onProgress?.call(DbTransferProgress(message: '! index: $e'));
+              }
+            }
+
+            curGenerated = _generatedColumns(
+              sourceEngine,
+              target.engine,
+              structure,
+            );
+            curValueTx = _valueTransforms(sourceEngine, structure);
+            curTypeByName = _targetTypesByName(
+              sourceEngine,
+              target.engine,
+              columns,
+            );
+
+          case 'rows':
+            var columns = DbDumpCodec.rowsColumns(record);
+            var rows = DbDumpCodec.rowsValues(record);
+            (columns, rows) = _dropColumns(columns, rows, curGenerated);
+            rows = _applyValueTransforms(columns, rows, curValueTx);
+            if (rows.isEmpty || columns.isEmpty) continue;
+            await DbService.runSql(
+              targetConn,
+              DbMigration.buildInsert(
+                target.engine,
+                curTargetTable,
+                columns,
+                rows,
+                schema: curTargetSchema,
+                columnTypes: [for (final c in columns) curTypeByName[c] ?? ''],
+              ),
+            );
+            totalRows += rows.length;
+            onProgress?.call(
+              DbTransferProgress(
+                message: '  $curTargetTable: $totalRows',
+                done: tableCount,
+                total: declaredTables,
+              ),
+            );
+        }
+      }
+
+      if (manifest == null) {
+        throw const FormatException('空归档或无法识别的文件');
+      }
+
+      // 全部表和数据完成后:自增序列复位 + 追加外键/CHECK(失败不中断)
+      for (final statement in [...deferredResets, ...deferredConstraints]) {
+        _check(isCancelled);
+        try {
+          await DbService.runSql(targetConn, statement);
+        } catch (e) {
+          onProgress?.call(
+            DbTransferProgress(message: '! ${e.toString().split('\n').first}'),
+          );
+        }
+      }
+
+      onProgress?.call(
+        DbTransferProgress(
+          message: '✓ $totalRows rows',
+          done: tableCount,
+          total: tableCount,
+        ),
+      );
+      return DbTransferSummary(tables: tableCount, rows: totalRows);
+    } finally {
+      await targetConn.close();
     }
   }
 
@@ -520,6 +870,9 @@ class DbTransferService {
           final generatedCols = rule == null
               ? _generatedColumns(source.engine, target.engine, structure)
               : const <String>{};
+          final valueTx = rule == null
+              ? _valueTransforms(source.engine, structure)
+              : const <String, Object? Function(Object?)>{};
           var tableRows = 0;
           await _forEachBatch(
             sourceConn,
@@ -537,6 +890,8 @@ class DbTransferService {
                 outRows,
                 generatedCols,
               );
+              // 现代化配套值清洗(money/char)
+              outRows = _applyValueTransforms(outColumns, outRows, valueTx);
               await DbService.runSql(
                 targetConn,
                 DbMigration.buildInsert(
@@ -632,6 +987,27 @@ class DbTransferService {
           onProgress: onProgress,
           isCancelled: isCancelled,
         );
+      case DbTransferMode.exportDump:
+        final path = _expandPath(task.filePath ?? '${task.name}.tdump');
+        return exportToDump(
+          source: source,
+          schema: task.wholeDatabase ? null : task.schema,
+          tables: task.wholeDatabase ? const [] : task.tables,
+          schemaTables: task.wholeDatabase ? const {} : task.schemaTables,
+          wholeDatabase: task.wholeDatabase,
+          filePath: path,
+          includeData: task.includeData,
+          onProgress: onProgress,
+          isCancelled: isCancelled,
+        );
+      case DbTransferMode.importDump:
+        return importDump(
+          target: source,
+          filePath: task.filePath!,
+          overwrite: task.overwrite,
+          onProgress: onProgress,
+          isCancelled: isCancelled,
+        );
       case DbTransferMode.migrate:
         if (target == null) throw StateError('迁移任务缺少目标连接');
         return migrate(
@@ -697,6 +1073,44 @@ class DbTransferService {
     };
   }
 
+  /// 源列名 → 值清洗函数(现代化配套:money 去货币符、char(n) 去尾部填充)
+  static Map<String, Object? Function(Object?)> _valueTransforms(
+    DbEngine sourceEngine,
+    DbTableStructure structure,
+  ) {
+    if (sourceEngine != DbEngine.postgres) return const {};
+    final out = <String, Object? Function(Object?)>{};
+    for (final c in structure.columns) {
+      if (DbMigration.isMoneyType(c.dataType)) {
+        out[c.name] = (v) => v is String ? DbMigration.cleanMoney(v) : v;
+      } else if (DbMigration.isFixedCharType(c.dataType)) {
+        out[c.name] = (v) => v is String ? v.replaceAll(RegExp(r' +$'), '') : v;
+      }
+    }
+    return out;
+  }
+
+  static List<List<Object?>> _applyValueTransforms(
+    List<String> columns,
+    List<List<Object?>> rows,
+    Map<String, Object? Function(Object?)> transforms,
+  ) {
+    if (transforms.isEmpty) return rows;
+    final byIndex = <int, Object? Function(Object?)>{};
+    for (var i = 0; i < columns.length; i++) {
+      final f = transforms[columns[i]];
+      if (f != null) byIndex[i] = f;
+    }
+    if (byIndex.isEmpty) return rows;
+    return [
+      for (final row in rows)
+        [
+          for (var i = 0; i < row.length; i++)
+            byIndex[i] == null ? row[i] : byIndex[i]!(row[i]),
+        ],
+    ];
+  }
+
   /// 从批次中剔除指定列
   static (List<String>, List<List<Object?>>) _dropColumns(
     List<String> columns,
@@ -736,8 +1150,7 @@ class DbTransferService {
     String table,
     List<DbColumnFilter> rowFilters,
     DbTransferCancelled? isCancelled,
-    Future<void> Function(List<String> columns, List<List<Object?>> rows)
-    emit,
+    Future<void> Function(List<String> columns, List<List<Object?>> rows) emit,
   ) async {
     var page = 0;
     var total = 0;

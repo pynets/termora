@@ -146,10 +146,7 @@ FROM generate_series(1, 450) i;
       30,
     );
     expect(
-      (await _query(
-        _pgTarget,
-        'SELECT count(*) FROM wdb_b.items',
-      )).first.first,
+      (await _query(_pgTarget, 'SELECT count(*) FROM wdb_b.items')).first.first,
       40,
     );
     expect(
@@ -161,7 +158,9 @@ FROM generate_series(1, 450) i;
     );
     // 主键约束迁过来了
     await expectLater(
-      _runAll(_pgTarget, ['INSERT INTO wdb_a.orders (id, amount) VALUES (1, 0)']),
+      _runAll(_pgTarget, [
+        'INSERT INTO wdb_a.orders (id, amount) VALUES (1, 0)',
+      ]),
       throwsA(anything),
     );
 
@@ -355,8 +354,11 @@ FROM generate_series(1, 40) i""",
     expect(summary.rows, 40);
 
     // 值保真:坐标 / SRID / NULL;geography 多边形面积一致
-    final row = (await _query(_pgTarget, '''
-SELECT ST_X(loc), ST_Y(loc), ST_SRID(loc) FROM geo_places WHERE id = 1''')).first;
+    final row = (await _query(
+      _pgTarget,
+      '''
+SELECT ST_X(loc), ST_Y(loc), ST_SRID(loc) FROM geo_places WHERE id = 1''',
+    )).first;
     expect((row[0] as num).toDouble(), closeTo(0.1, 1e-9));
     expect((row[1] as num).toDouble(), closeTo(0.2, 1e-9));
     expect(row[2], 4326);
@@ -461,11 +463,7 @@ WHERE c.relname = 'vec_chunks' AND attname = 'embedding'""")).first.first,
     expect(dstVecs.length, srcVecs.length);
     for (var i = 0; i < srcVecs.length; i++) {
       expect(dstVecs[i][0], srcVecs[i][0]);
-      expect(
-        dstVecs[i][1],
-        srcVecs[i][1],
-        reason: 'id=${srcVecs[i][0]} 向量不一致',
-      );
+      expect(dstVecs[i][1], srcVecs[i][1], reason: 'id=${srcVecs[i][0]} 向量不一致');
     }
 
     await _runAll(_pgSource, ['DROP TABLE IF EXISTS vec_chunks']);
@@ -557,10 +555,7 @@ WHERE table_name = 'fid_users' ORDER BY ordinal_position""");
 
     // serial → IDENTITY:迁移应已把序列拨到 max(id)=20,不带 id 直接插入
     // 就能自增到 21(不再手动 setval —— 这正是之前漏掉的一步)
-    await _run(
-      _pgTarget,
-      "INSERT INTO fid_users (email) VALUES ('new@x.com')",
-    );
+    await _run(_pgTarget, "INSERT INTO fid_users (email) VALUES ('new@x.com')");
     expect(
       (await _query(
         _pgTarget,
@@ -578,10 +573,13 @@ WHERE table_name = 'fid_users' ORDER BY ordinal_position""");
       '用户表',
     );
     expect(
-      (await _query(_pgTarget, """
+      (await _query(
+        _pgTarget,
+        """
 SELECT col_description('fid_users'::regclass,
   (SELECT attnum FROM pg_attribute
-   WHERE attrelid = 'fid_users'::regclass AND attname = 'email'))""")).first.first,
+   WHERE attrelid = 'fid_users'::regclass AND attname = 'email'))""",
+      )).first.first,
       '邮箱,唯一',
     );
 
@@ -602,6 +600,65 @@ WHERE tablename = 'fid_users' ORDER BY indexname""");
 
     await _runAll(_pgSource, ['DROP TABLE IF EXISTS fid_users']);
     await _runAll(_pgTarget, ['DROP TABLE IF EXISTS fid_users']);
+  });
+
+  test('迁移 pg → pg:旧语法现代化 char(n)→text / money→numeric + 值清洗', () async {
+    await _runAll(_pgSource, [
+      'DROP TABLE IF EXISTS mod_t',
+      '''
+CREATE TABLE mod_t (
+  id bigint PRIMARY KEY,
+  code char(6),
+  price money,
+  note character varying(20)
+)''',
+      "INSERT INTO mod_t VALUES "
+          "(1, 'ab', 1234.56, 'hi'), "
+          "(2, 'xyz', -0.99, 'yo'), "
+          "(3, NULL, 1000000.00, NULL)",
+    ]);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS mod_t']);
+
+    final summary = await DbTransferService.migrate(
+      source: _pgSource,
+      target: _pgTarget,
+      schema: 'public',
+      tables: ['mod_t'],
+    );
+    expect(summary.rows, 3);
+
+    // 类型现代化:char→text、money→numeric、varchar 不动
+    final types = await _query(_pgTarget, """
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_name = 'mod_t' ORDER BY ordinal_position""");
+    final byName = {for (final r in types) r[0]: r[1]};
+    expect(byName['code'], 'text');
+    expect(byName['price'], 'numeric');
+    expect(byName['note'], 'character varying');
+
+    // 值清洗:money 去货币符/逗号、负数;char 去尾部填充空格
+    final r1 = (await _query(
+      _pgTarget,
+      "SELECT code, price::text FROM mod_t WHERE id = 1",
+    )).first;
+    expect(r1[0], 'ab'); // char(6) 'ab    ' → 去填充
+    expect(r1[1], '1234.56');
+    final r2 = (await _query(
+      _pgTarget,
+      "SELECT code, price::text FROM mod_t WHERE id = 2",
+    )).first;
+    expect(r2[0], 'xyz');
+    expect(r2[1], '-0.99'); // 负 money
+    expect(
+      (await _query(
+        _pgTarget,
+        "SELECT price::text FROM mod_t WHERE id = 3",
+      )).first.first,
+      '1000000.00',
+    );
+
+    await _runAll(_pgSource, ['DROP TABLE IF EXISTS mod_t']);
+    await _runAll(_pgTarget, ['DROP TABLE IF EXISTS mod_t']);
   });
 
   test('迁移 pg → pg:现代 IDENTITY 主键(序列拨到 max,直接续增)', () async {
@@ -731,7 +788,9 @@ CREATE TABLE ref_child (
     Future<void> migrate() => DbTransferService.migrate(
       source: _pgSource,
       target: _pgTarget,
-      schemaTables: const {'public': ['ref_parent', 'ref_child']},
+      schemaTables: const {
+        'public': ['ref_parent', 'ref_child'],
+      },
     );
 
     // 第一次迁移建好表+外键
@@ -741,10 +800,7 @@ CREATE TABLE ref_child (
     await migrate();
 
     expect(
-      (await _query(
-        _pgTarget,
-        'SELECT count(*) FROM ref_child',
-      )).first.first,
+      (await _query(_pgTarget, 'SELECT count(*) FROM ref_child')).first.first,
       8,
     );
     // 外键仍在且生效
@@ -790,7 +846,9 @@ CREATE TABLE a_orders (
     final summary = await DbTransferService.migrate(
       source: _pgSource,
       target: _pgTarget,
-      schemaTables: const {'public': ['a_orders', 'z_users']},
+      schemaTables: const {
+        'public': ['a_orders', 'z_users'],
+      },
     );
     expect(summary.rows, 40);
 
@@ -814,9 +872,12 @@ CREATE TABLE a_orders (
     );
     // 约束名保留
     expect(
-      (await _query(_pgTarget, """
+      (await _query(
+        _pgTarget,
+        """
 SELECT count(*) FROM pg_constraint
-WHERE conrelid = 'a_orders'::regclass AND contype IN ('f', 'c')""")).first.first,
+WHERE conrelid = 'a_orders'::regclass AND contype IN ('f', 'c')""",
+      )).first.first,
       2,
     );
 
@@ -928,11 +989,7 @@ FROM tx_users WHERE id = 1""")).first;
       expect(row[4], [0xde, 0xad, 0xbe, 0xef]); // bytea → BLOB
       expect('${row[5]}', startsWith('2026-01-01T01:00')); // timestamp → TEXT
       expect(
-        db
-            .select('SELECT age FROM tx_users WHERE id = 3')
-            .first
-            .values
-            .first,
+        db.select('SELECT age FROM tx_users WHERE id = 3').first.values.first,
         isNull,
       );
     } finally {
@@ -1022,8 +1079,11 @@ SELECT label, weight, encode(data, 'hex') FROM gadgets WHERE id = 1""")).first;
       (await _query(_pgTarget, 'SELECT count(*) FROM tx_users')).first.first,
       450,
     );
-    final row = (await _query(_pgTarget, """
-SELECT name, meta ->> 'i', encode(raw, 'hex') FROM tx_users WHERE id = 7""")).first;
+    final row = (await _query(
+      _pgTarget,
+      """
+SELECT name, meta ->> 'i', encode(raw, 'hex') FROM tx_users WHERE id = 7""",
+    )).first;
     expect(row[0], "user'7");
     expect(row[1], '7');
     expect(row[2], 'deadbeef');
