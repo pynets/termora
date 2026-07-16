@@ -34,16 +34,78 @@ class FilePreviewDialog extends StatefulWidget {
   static const int maxInlineBytes = 8 * 1024 * 1024;
 
   static const _textExts = {
-    'txt', 'log', 'json', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg',
-    'env', 'sh', 'bash', 'zsh', 'fish', 'py', 'js', 'ts', 'jsx', 'tsx',
-    'dart', 'go', 'rs', 'c', 'h', 'cpp', 'hpp', 'cc', 'java', 'kt', 'swift',
-    'rb', 'php', 'pl', 'lua', 'sql', 'html', 'htm', 'css', 'scss', 'xml',
-    'csv', 'tsv', 'properties', 'gradle', 'dockerfile', 'makefile', 'gitignore',
-    'lock', 'sum', 'mod', 'vue', 'svelte', 'r', 'm', 'mm', 'vim', 'diff',
-    'patch', 'text', 'nfo', 'srt',
+    'txt',
+    'log',
+    'json',
+    'yaml',
+    'yml',
+    'toml',
+    'ini',
+    'conf',
+    'cfg',
+    'env',
+    'sh',
+    'bash',
+    'zsh',
+    'fish',
+    'py',
+    'js',
+    'ts',
+    'jsx',
+    'tsx',
+    'dart',
+    'go',
+    'rs',
+    'c',
+    'h',
+    'cpp',
+    'hpp',
+    'cc',
+    'java',
+    'kt',
+    'swift',
+    'rb',
+    'php',
+    'pl',
+    'lua',
+    'sql',
+    'html',
+    'htm',
+    'css',
+    'scss',
+    'xml',
+    'csv',
+    'tsv',
+    'properties',
+    'gradle',
+    'dockerfile',
+    'makefile',
+    'gitignore',
+    'lock',
+    'sum',
+    'mod',
+    'vue',
+    'svelte',
+    'r',
+    'm',
+    'mm',
+    'vim',
+    'diff',
+    'patch',
+    'text',
+    'nfo',
+    'srt',
   };
   static const _imageExts = {
-    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif',
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
+    'bmp',
+    'ico',
+    'tiff',
+    'tif',
   };
 
   static FilePreviewKind kindOf(String name) {
@@ -55,8 +117,13 @@ class FilePreviewDialog extends StatefulWidget {
     if (ext == 'md' || ext == 'markdown') return FilePreviewKind.markdown;
     if (_imageExts.contains(ext)) return FilePreviewKind.image;
     if (_textExts.contains(ext) ||
-        const {'readme', 'license', 'dockerfile', 'makefile', 'changelog'}
-            .contains(base)) {
+        const {
+          'readme',
+          'license',
+          'dockerfile',
+          'makefile',
+          'changelog',
+        }.contains(base)) {
       return FilePreviewKind.text;
     }
     return FilePreviewKind.other;
@@ -70,6 +137,7 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
   Uint8List? _bytes;
   String? _text;
   bool _loading = true;
+  bool _maximized = false;
   String? _error;
   late final FilePreviewKind _kind = FilePreviewDialog.kindOf(widget.name);
 
@@ -127,10 +195,15 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: AppTheme.surfaceColor,
+      insetPadding: _maximized
+          ? const EdgeInsets.all(12)
+          : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 820, maxHeight: 640),
+        constraints: _maximized
+            ? const BoxConstraints.expand()
+            : const BoxConstraints(maxWidth: 820, maxHeight: 640),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: _maximized ? MainAxisSize.max : MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildHeader(),
@@ -148,48 +221,64 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
       FilePreviewKind.text => LucideIcons.fileText300,
       FilePreviewKind.other => LucideIcons.file300,
     };
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-      child: Row(
-        children: [
-          Icon(icon, size: 15, color: AppTheme.brandColor),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              widget.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.headingColor,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: () => setState(() => _maximized = !_maximized),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
+        ),
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: AppTheme.brandColor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                widget.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.headingColor,
+                ),
               ),
             ),
-          ),
-          IconButton(
-            tooltip: tr('用系统默认打开'),
-            icon: Icon(
-              LucideIcons.externalLink300,
-              size: 15,
-              color: AppTheme.subtleTextColor,
+            IconButton(
+              tooltip: tr('用系统默认打开'),
+              icon: Icon(
+                LucideIcons.externalLink300,
+                size: 15,
+                color: AppTheme.subtleTextColor,
+              ),
+              visualDensity: VisualDensity.compact,
+              onPressed: _openExternally,
             ),
-            visualDensity: VisualDensity.compact,
-            onPressed: _openExternally,
-          ),
-          IconButton(
-            tooltip: tr('关闭'),
-            icon: Icon(
-              LucideIcons.x300,
-              size: 15,
-              color: AppTheme.subtleTextColor,
+            IconButton(
+              tooltip: _maximized ? tr('还原') : tr('最大化'),
+              icon: Icon(
+                _maximized
+                    ? LucideIcons.minimize2300
+                    : LucideIcons.maximize2300,
+                size: 15,
+                color: AppTheme.subtleTextColor,
+              ),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() => _maximized = !_maximized),
             ),
-            visualDensity: VisualDensity.compact,
-            onPressed: () => Navigator.of(context).maybePop(),
-          ),
-        ],
+            IconButton(
+              tooltip: tr('关闭'),
+              icon: Icon(
+                LucideIcons.x300,
+                size: 15,
+                color: AppTheme.subtleTextColor,
+              ),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ],
+        ),
       ),
     );
   }
