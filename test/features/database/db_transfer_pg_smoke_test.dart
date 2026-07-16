@@ -1088,4 +1088,114 @@ SELECT name, meta ->> 'i', encode(raw, 'hex') FROM tx_users WHERE id = 7""",
     expect(row[1], '7');
     expect(row[2], 'deadbeef');
   });
+
+  test('便携归档 dump→store pg → pg:类型保真 + 覆盖回放', () async {
+    final dumpPath = '${tempDir.path}/backup.tdump';
+    final exported = await DbTransferService.exportToDump(
+      source: _pgSource,
+      schemaTables: const {
+        'public': ['tx_users'],
+      },
+      filePath: dumpPath,
+    );
+    expect(exported.tables, 1);
+    expect(exported.rows, 450);
+
+    // 归档是 gzip 压缩的:文件头两字节应为 gzip 魔数 0x1f 0x8b
+    final bytes = await File(dumpPath).readAsBytes();
+    expect(bytes.length, greaterThan(2));
+    expect(bytes[0], 0x1f);
+    expect(bytes[1], 0x8b);
+
+    // 目标已有同名表(内容不同):store 覆盖式导入应先 DROP 再重建
+    await _run(_pgTarget, 'CREATE TABLE tx_users (id bigint)');
+    await _run(_pgTarget, 'INSERT INTO tx_users VALUES (999)');
+
+    final imported = await DbTransferService.importDump(
+      target: _pgTarget,
+      filePath: dumpPath,
+    );
+    expect(imported.tables, 1);
+    expect(imported.rows, 450);
+
+    expect(
+      (await _query(_pgTarget, 'SELECT count(*) FROM tx_users')).first.first,
+      450,
+    );
+    final row = (await _query(
+      _pgTarget,
+      """
+SELECT name, age, price, active, meta ->> 'i', uid::text,
+       encode(raw, 'hex'), created_at
+FROM tx_users WHERE id = 7""",
+    )).first;
+    expect(row[0], "user'7");
+    expect(row[1], 7); // 7 % 3 != 0 → 非空
+    expect('${row[2]}', '8.75'); // 7 * 1.25
+    expect(row[3], false); // 7 % 2 != 0
+    expect(row[4], '7');
+    expect(row[5], '00000000-0000-0000-0000-000000000001');
+    expect(row[6], 'deadbeef');
+    expect(row[7], isNotNull);
+    // NULL(9 % 3 == 0)也正确还原
+    expect(
+      (await _query(_pgTarget, 'SELECT age FROM tx_users WHERE id = 9'))
+          .first
+          .first,
+      isNull,
+    );
+  });
+
+  test('便携归档 dump→store pg → pg:整库多 schema + 自增续接', () async {
+    // 源:两个 schema,一张 serial 自增表 + 一张普通表
+    await _runAll(_pgSource, [
+      'DROP SCHEMA IF EXISTS dmp_a CASCADE',
+      'DROP SCHEMA IF EXISTS dmp_b CASCADE',
+      'CREATE SCHEMA dmp_a',
+      'CREATE SCHEMA dmp_b',
+      'CREATE TABLE dmp_a.orders (id serial PRIMARY KEY, amount numeric)',
+      'CREATE TABLE dmp_b.items (id bigint PRIMARY KEY, name text)',
+      'INSERT INTO dmp_a.orders (amount) SELECT i*1.5 FROM generate_series(1,30) i',
+      "INSERT INTO dmp_b.items SELECT i, 'item'||i FROM generate_series(1,40) i",
+    ]);
+    await _runAll(_pgTarget, [
+      'DROP SCHEMA IF EXISTS dmp_a CASCADE',
+      'DROP SCHEMA IF EXISTS dmp_b CASCADE',
+    ]);
+
+    final dumpPath = '${tempDir.path}/whole.tdump';
+    // 整库导出会带上 public.tx_users 等,这里只关心 dmp_a/dmp_b 用多 schema 精确选择
+    final exported = await DbTransferService.exportToDump(
+      source: _pgSource,
+      schemaTables: const {'dmp_a': [], 'dmp_b': []},
+      filePath: dumpPath,
+    );
+    expect(exported.tables, 2);
+    expect(exported.rows, 70);
+
+    final imported = await DbTransferService.importDump(target: _pgTarget, filePath: dumpPath);
+    expect(imported.tables, 2);
+    expect(imported.rows, 70);
+
+    // 多 schema → 保留限定名
+    expect(
+      (await _query(_pgTarget, 'SELECT count(*) FROM dmp_a.orders')).first.first,
+      30,
+    );
+    expect(
+      (await _query(_pgTarget, 'SELECT count(*) FROM dmp_b.items')).first.first,
+      40,
+    );
+    // serial→IDENTITY 且序列拨到 max:新插入不指定 id 应续到 31
+    await _run(_pgTarget, 'INSERT INTO dmp_a.orders (amount) VALUES (100)');
+    expect(
+      (await _query(_pgTarget, 'SELECT max(id) FROM dmp_a.orders')).first.first,
+      31,
+    );
+
+    await _runAll(_pgSource, [
+      'DROP SCHEMA IF EXISTS dmp_a CASCADE',
+      'DROP SCHEMA IF EXISTS dmp_b CASCADE',
+    ]);
+  });
 }

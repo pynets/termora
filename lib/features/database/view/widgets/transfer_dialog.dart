@@ -688,7 +688,7 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 目标方言 / 目标连接
+        // 目标方言(SQL 导出)/ 目标连接(迁移);便携归档无二者
         if (widget.mode == DbTransferMode.export) ...[
           _label(tr('目标方言')),
           GlassDropdownButton<DbEngine>(
@@ -706,22 +706,25 @@ class _TransferDialogState extends ConsumerState<_TransferDialog> {
               }
             },
           ),
-        ] else ...[
+          const SizedBox(height: 12),
+        ] else if (widget.mode == DbTransferMode.migrate) ...[
           _label(tr('目标连接')),
           _buildTargetPicker(),
+          const SizedBox(height: 12),
         ],
-        const SizedBox(height: 12),
         _label(tr('源 Schema(可多选)')),
         const SizedBox(height: 6),
         _buildSchemaChips(),
         const SizedBox(height: 12),
         _buildScopeBody(),
         const SizedBox(height: 6),
-        _buildToggle(
-          value: _overwrite,
-          title: tr('覆盖目标同名表(DROP TABLE IF EXISTS)'),
-          onChanged: (v) => setState(() => _overwrite = v),
-        ),
+        // 便携归档不在导出时嵌 DROP(覆盖与否是导入时的选择)
+        if (widget.mode != DbTransferMode.exportDump)
+          _buildToggle(
+            value: _overwrite,
+            title: tr('覆盖目标同名表(DROP TABLE IF EXISTS)'),
+            onChanged: (v) => setState(() => _overwrite = v),
+          ),
         _buildToggle(
           value: _includeData,
           title: tr('包含数据(否则仅结构)'),

@@ -41,6 +41,7 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
   /// 数据浏览子页签: 0 = 数据, 1 = 结构
   int _tableTab = 0;
   final Set<String> _expandedSchemas = {};
+  final Set<String> _collapsedConnections = {};
   final CodeLineEditingController _sqlController = CodeLineEditingController();
   final TextEditingController _filterController = TextEditingController();
 
@@ -53,15 +54,27 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
   /// 上次持久化的 SQL 文本(用于判断是否真的变了)
   String _lastSavedSql = '';
 
+  /// SQL 编辑器高度
+  double _sqlEditorHeight = 150.0;
+
+  /// 左侧导航栏宽度
+  double _sidebarWidth = 250.0;
+
+  /// 当前 SQL 编辑器绑定的连接 ID(用于分库记录 SQL 缓存)
+  String? _activeConnectionIdForSql;
+
   @override
   void initState() {
     super.initState();
     // 选区/内容变化时刷新按钮文案并防抖持久化 SQL 文本
     _sqlController.addListener(_onSqlChanged);
-    // 恢复上次的 SQL 编辑器文本(不需要连接)。
-    // 摘掉监听再赋值,避免恢复本身触发一次持久化/setState。
-    WorkspaceStore.loadSqlText().then((text) {
-      if (mounted && text.isNotEmpty && _sqlController.text.isEmpty) {
+    // 恢复上次/默认的 SQL 编辑器文本
+    final initialId = ref.read(dbSessionProvider).activeId;
+    _activeConnectionIdForSql = initialId;
+    WorkspaceStore.loadSqlText(connectionId: initialId).then((text) {
+      if (mounted &&
+          _activeConnectionIdForSql == initialId &&
+          _sqlController.text.isEmpty) {
         _sqlController.removeListener(_onSqlChanged);
         _sqlController.text = text;
         _lastSavedSql = text;
@@ -95,9 +108,11 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
     final text = _sqlController.text;
     if (text == _lastSavedSql) return;
     _sqlSaveDebounce?.cancel();
+    final targetId =
+        _activeConnectionIdForSql ?? ref.read(dbSessionProvider).activeId;
     _sqlSaveDebounce = Timer(const Duration(milliseconds: 600), () {
       _lastSavedSql = text;
-      WorkspaceStore.saveSqlText(text);
+      WorkspaceStore.saveSqlText(text, connectionId: targetId);
     });
   }
 
@@ -106,7 +121,9 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
     _sqlSaveDebounce?.cancel();
     // 关闭前把未落盘的 SQL 文本立刻写入
     if (_sqlController.text != _lastSavedSql) {
-      WorkspaceStore.saveSqlText(_sqlController.text);
+      final targetId =
+          _activeConnectionIdForSql ?? ref.read(dbSessionProvider).activeId;
+      WorkspaceStore.saveSqlText(_sqlController.text, connectionId: targetId);
     }
     _sqlController.removeListener(_onSqlChanged);
     _sqlController.dispose();
@@ -117,6 +134,9 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(dbSessionProvider);
+    ref.listen(dbSessionProvider.select((s) => s.activeId), (prev, next) {
+      _switchConnectionSql(prev, next);
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -130,8 +150,11 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(width: 250, child: _buildNavigator(session)),
-              VerticalDivider(width: 0.5, color: AppTheme.borderColor),
+              SizedBox(width: _sidebarWidth, child: _buildNavigator(session)),
+              _ResizableDivider(
+                axis: Axis.horizontal,
+                onDragDelta: _onSidebarResize,
+              ),
               Expanded(child: _buildContent(session)),
             ],
           ),
@@ -146,6 +169,28 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
     if (cfg == null || cfg.name.isEmpty) return AppL10n.current.notConnected;
     final ver = session.serverVersion;
     return (ver != null && ver.isNotEmpty) ? '${cfg.name} · $ver' : cfg.name;
+  }
+
+  void _switchConnectionSql(String? prevId, String? nextId) {
+    if (prevId == nextId) return;
+    // 切连接前，把当前未落盘的 SQL 文本立刻写入上一个连接的分库记录中
+    if (prevId != null &&
+        prevId.isNotEmpty &&
+        _sqlController.text != _lastSavedSql) {
+      _sqlSaveDebounce?.cancel();
+      _lastSavedSql = _sqlController.text;
+      WorkspaceStore.saveSqlText(_sqlController.text, connectionId: prevId);
+    }
+    _activeConnectionIdForSql = nextId;
+    // 异步加载目标连接的分库 SQL 缓存
+    WorkspaceStore.loadSqlText(connectionId: nextId).then((text) {
+      if (!mounted || _activeConnectionIdForSql != nextId) return;
+      _sqlController.removeListener(_onSqlChanged);
+      _sqlController.text = text;
+      _lastSavedSql = text;
+      _sqlController.addListener(_onSqlChanged);
+      setState(() {});
+    });
   }
 
   // ══════════════════════ 左侧导航 ══════════════════════
@@ -243,12 +288,20 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
     final isActive = sessionsState.activeId == config.id;
     final isConnected = session.status == DbSessionStatus.connected;
     final isConnecting = session.status == DbSessionStatus.connecting;
+    final isCollapsed = _collapsedConnections.contains(config.id);
 
     return [
       InkWell(
         onTap: () {
           if (isConnected) {
             ref.read(dbSessionProvider.notifier).selectConnection(config.id);
+            setState(() {
+              if (isCollapsed) {
+                _collapsedConnections.remove(config.id);
+              } else {
+                _collapsedConnections.add(config.id);
+              }
+            });
           } else if (!isConnecting) {
             ref.read(dbSessionProvider.notifier).connect(config);
           }
@@ -260,7 +313,7 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           color: isActive
               ? AppTheme.softBrandColor.withValues(alpha: 0.5)
               : Colors.transparent,
-          padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
+          padding: EdgeInsets.fromLTRB(isConnected ? 8 : 12, 7, 4, 7),
           child: Row(
             children: [
               if (isConnecting)
@@ -269,13 +322,23 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
                   height: 15,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              else
+              else if (isConnected) ...[
                 Icon(
-                  isConnected ? LucideIcons.plugZap : LucideIcons.plug,
+                  isCollapsed ? LucideIcons.chevronRight : LucideIcons.chevronDown,
+                  size: 13,
+                  color: AppTheme.subtleTextColor,
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  LucideIcons.plugZap,
                   size: 15,
-                  color: isConnected
-                      ? AppTheme.successColor
-                      : AppTheme.subtleTextColor,
+                  color: AppTheme.successColor,
+                ),
+              ] else
+                Icon(
+                  LucideIcons.plug,
+                  size: 15,
+                  color: AppTheme.subtleTextColor,
                 ),
               const SizedBox(width: 8),
               Expanded(
@@ -332,7 +395,7 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           ),
         ),
       // schema 树
-      if (isConnected)
+      if (isConnected && !isCollapsed)
         for (final schema in session.schemas)
           ..._buildSchemaNode(config.id, schema, session, isActive),
     ];
@@ -516,7 +579,7 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           }
         },
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 5, 8, 5),
+          padding: const EdgeInsets.fromLTRB(25, 5, 8, 5),
           child: Row(
             children: [
               Icon(
@@ -601,7 +664,7 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
         color: selected
             ? AppTheme.softBrandColor.withValues(alpha: 0.32)
             : Colors.transparent,
-        padding: const EdgeInsets.fromLTRB(45, 4.5, 8, 4.5),
+        padding: const EdgeInsets.fromLTRB(42, 4.5, 8, 4.5),
         child: Row(
           children: [
             Icon(
@@ -1404,9 +1467,11 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
           child: SqlEditor(
             controller: _sqlController,
+            height: _sqlEditorHeight,
             metadataPrompts: _buildMetadataPrompts(),
             variableNames: ref.watch(dbVariablesProvider).keys.toList(),
             onRun: _runSql,
+            onVerticalDragUpdate: _onSqlEditorResize,
           ),
         ),
         Padding(
@@ -1464,11 +1529,32 @@ class _DatabasePageState extends ConsumerState<DatabasePage> {
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        Divider(height: 1, thickness: 0.5, color: AppTheme.borderColor),
+        const SizedBox(height: 4),
+        _ResizableDivider(
+          axis: Axis.vertical,
+          onDragDelta: _onSqlEditorResize,
+        ),
         Expanded(child: _buildSqlResult(sql)),
       ],
     );
+  }
+
+  void _onSqlEditorResize(double delta) {
+    if (!mounted) return;
+    final maxHeight = MediaQuery.of(context).size.height - 200;
+    setState(() {
+      _sqlEditorHeight =
+          (_sqlEditorHeight + delta).clamp(60.0, maxHeight.clamp(60.0, 1200.0));
+    });
+  }
+
+  void _onSidebarResize(double delta) {
+    if (!mounted) return;
+    final maxWidth = MediaQuery.of(context).size.width - 300;
+    setState(() {
+      _sidebarWidth =
+          (_sidebarWidth + delta).clamp(160.0, maxWidth.clamp(160.0, 800.0));
+    });
   }
 
   Widget _buildSqlResult(DbSqlState sql) {
@@ -1742,6 +1828,56 @@ class _TasksButton extends ConsumerWidget {
         ),
       ),
       onPressed: () => showTransferTasksDialog(context),
+    );
+  }
+}
+
+/// 通用拖拽分割条(用于左右调整侧边栏宽度及上下调整 SQL 输入框高度)
+class _ResizableDivider extends StatefulWidget {
+  const _ResizableDivider({required this.axis, required this.onDragDelta});
+
+  final Axis axis;
+  final ValueChanged<double> onDragDelta;
+
+  @override
+  State<_ResizableDivider> createState() => _ResizableDividerState();
+}
+
+class _ResizableDividerState extends State<_ResizableDivider> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final horizontal = widget.axis == Axis.horizontal;
+    final lineColor = _hovered
+        ? AppTheme.brandColor.withValues(alpha: 0.7)
+        : AppTheme.borderColor;
+    return MouseRegion(
+      cursor: horizontal
+          ? SystemMouseCursors.resizeColumn
+          : SystemMouseCursors.resizeRow,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: horizontal
+            ? (details) => widget.onDragDelta(details.delta.dx)
+            : null,
+        onVerticalDragUpdate: horizontal
+            ? null
+            : (details) => widget.onDragDelta(details.delta.dy),
+        child: SizedBox(
+          width: horizontal ? 8 : null,
+          height: horizontal ? null : 8,
+          child: Center(
+            child: Container(
+              width: horizontal ? (_hovered ? 1.5 : 0.5) : double.infinity,
+              height: horizontal ? double.infinity : (_hovered ? 1.5 : 0.5),
+              color: lineColor,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -49,18 +49,32 @@ const Map<String, String> _sqlFunctions = {
   'random': 'float8',
 };
 
+Map<String, TextStyle> _buildThinSqlTheme(Map<String, TextStyle> base) {
+  return {
+    for (final entry in base.entries)
+      entry.key: entry.value.copyWith(
+        fontWeight: entry.key == 'strong' ? FontWeight.w600 : FontWeight.w300,
+      ),
+  };
+}
+
 /// SQL 高亮编辑器(re_editor + langSql),明暗主题自动切换,
 /// 内建自动补全:SQL 关键词/函数 + 元数据(schema/表/列)+ `${变量}`
 class SqlEditor extends StatelessWidget {
   const SqlEditor({
     super.key,
     required this.controller,
+    this.height = 150,
     this.metadataPrompts = const [],
     this.variableNames = const [],
     this.onRun,
+    this.onVerticalDragUpdate,
   });
 
   final CodeLineEditingController controller;
+
+  /// SQL 编辑器高度
+  final double height;
 
   /// 来自当前连接元数据的补全项(schema/表/列)
   final List<CodePrompt> metadataPrompts;
@@ -70,6 +84,9 @@ class SqlEditor extends StatelessWidget {
 
   /// ⌘/Ctrl+Enter 执行回调(re_editor 默认吞掉该组合键作换行,此处已改绑)
   final VoidCallback? onRun;
+
+  /// 上下拖拽调整高度回调
+  final ValueChanged<double>? onVerticalDragUpdate;
 
   @override
   Widget build(BuildContext context) {
@@ -91,46 +108,83 @@ class SqlEditor extends StatelessWidget {
     );
 
     return Container(
-      height: 150,
+      height: height,
       decoration: BoxDecoration(
         color: AppTheme.surfaceColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.borderColor),
       ),
       clipBehavior: Clip.antiAlias,
-      // 外层捕获 ⌘/Ctrl+Enter 执行(编辑器已从换行绑定中移除该组合键)
-      child: CallbackShortcuts(
-        bindings: {
-          if (onRun != null) ...{
-            const SingleActivator(LogicalKeyboardKey.enter, meta: true): onRun!,
-            const SingleActivator(LogicalKeyboardKey.enter, control: true):
-                onRun!,
-          },
-        },
-        child: CodeAutocomplete(
-          viewBuilder: _buildPromptsView,
-          promptsBuilder: _SqlPromptsBuilder(
-            base: defaultBuilder,
-            variableNames: variableNames,
-          ),
-          child: CodeEditor(
-            controller: controller,
-            wordWrap: false,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            // 从 newLine 绑定中剔除 ⌘/Ctrl+Enter,使其冒泡给外层执行
-            shortcutsActivatorsBuilder: const _SqlShortcutsBuilder(),
-            style: CodeEditorStyle(
-              fontSize: 13,
-              fontFamily: 'Menlo',
-              fontHeight: 1.5,
-              codeTheme: CodeHighlightTheme(
-                languages: {'sql': CodeHighlightThemeMode(mode: langSql)},
-                theme: isDark ? atomOneDarkTheme : atomOneLightTheme,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            // 外层捕获 ⌘/Ctrl+Enter 执行(编辑器已从换行绑定中移除该组合键)
+            child: CallbackShortcuts(
+              bindings: {
+                if (onRun != null) ...{
+                  const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+                      onRun!,
+                  const SingleActivator(
+                        LogicalKeyboardKey.enter,
+                        control: true,
+                      ):
+                      onRun!,
+                },
+              },
+              child: CodeAutocomplete(
+                viewBuilder: _buildPromptsView,
+                promptsBuilder: _SqlPromptsBuilder(
+                  base: defaultBuilder,
+                  variableNames: variableNames,
+                ),
+                child: CodeEditor(
+                  controller: controller,
+                  wordWrap: false,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  // 从 newLine 绑定中剔除 ⌘/Ctrl+Enter,使其冒泡给外层执行
+                  shortcutsActivatorsBuilder: const _SqlShortcutsBuilder(),
+                  style: CodeEditorStyle(
+                    fontSize: 12,
+                    fontFamily: 'SFMono-Light',
+                    fontFamilyFallback: const [
+                      'SF Mono',
+                      'Menlo',
+                      'Consolas',
+                      'Courier New',
+                      'PingFang SC',
+                    ],
+                    fontHeight: 1.5,
+                    codeTheme: CodeHighlightTheme(
+                      languages: {'sql': CodeHighlightThemeMode(mode: langSql)},
+                      theme: _buildThinSqlTheme(
+                        isDark ? atomOneDarkTheme : atomOneLightTheme,
+                      ),
+                    ),
+                  ),
+                  scrollbarBuilder: (context, child, details) => child,
+                ),
               ),
             ),
-            scrollbarBuilder: (context, child, details) => child,
           ),
-        ),
+          if (onVerticalDragUpdate != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 8,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeRow,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onVerticalDragUpdate: (details) =>
+                      onVerticalDragUpdate!(details.delta.dy),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -195,8 +249,10 @@ class SqlEditor extends StatelessWidget {
                             prompt.word,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontFamily: 'Menlo',
+                              fontFamily: 'SFMono-Light',
                               fontFamilyFallback: const [
+                                'SF Mono',
+                                'Menlo',
                                 'Consolas',
                                 'monospace',
                               ],
@@ -206,7 +262,7 @@ class SqlEditor extends StatelessWidget {
                                   : AppTheme.headingColor,
                               fontWeight: selected
                                   ? FontWeight.w600
-                                  : FontWeight.w400,
+                                  : FontWeight.w300,
                             ),
                           ),
                         ),

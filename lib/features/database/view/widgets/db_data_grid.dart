@@ -70,6 +70,11 @@ class _DbDataGridState extends State<DbDataGrid> {
   late List<double> _colWidths;
   int? _hoveredRow;
 
+  // 行选择态(多选:点选替换 / Cmd·Ctrl 加选 / Shift 连选)
+  final Set<int> _selectedRows = {};
+  int? _selectionAnchor;
+  final FocusNode _gridFocus = FocusNode();
+
   // 内联编辑态
   int? _editingRow;
   int? _editingCol;
@@ -116,6 +121,11 @@ class _DbDataGridState extends State<DbDataGrid> {
         _startEdit(r, 0);
       });
     }
+    // 换了结果集(新查询/排序/过滤)→ 行下标失效,清空选择
+    if (!identical(oldWidget.output, widget.output)) {
+      _selectedRows.clear();
+      _selectionAnchor = null;
+    }
   }
 
   @override
@@ -124,6 +134,7 @@ class _DbDataGridState extends State<DbDataGrid> {
     _vertical.dispose();
     _editController?.dispose();
     _editFocus.dispose();
+    _gridFocus.dispose();
     super.dispose();
   }
 
@@ -161,6 +172,15 @@ class _DbDataGridState extends State<DbDataGrid> {
     return text.length > 300 ? '${text.substring(0, 300)}…' : text;
   }
 
+  /// 拷贝用的完整文本(不像 [_cellText] 那样截断到 300 字)
+  static String _fullCellText(Object? value) {
+    if (identical(value, DbEditSession.unsetValue)) return '';
+    if (value == null) return 'NULL';
+    if (value is DateTime) return value.toIso8601String();
+    if (value is List<int>) return '<${value.length} bytes>';
+    return value.toString();
+  }
+
   double get _totalWidth =>
       _colWidths.fold(0.0, (a, b) => a + b) + _rowNumberWidth;
 
@@ -193,6 +213,98 @@ class _DbDataGridState extends State<DbDataGrid> {
 
   bool _isEditedCell(int row, int col) =>
       !_isAddedRow(row) && _edits.isCellEdited(row, col);
+
+  // ── 行选择 / 拷贝 ──
+
+  /// 点选一行:普通=替换选择;Cmd/Ctrl=切换加选;Shift=从锚点连选
+  void _selectRow(int r) {
+    final kb = HardwareKeyboard.instance;
+    final additive = kb.isMetaPressed || kb.isControlPressed;
+    final range = kb.isShiftPressed;
+    setState(() {
+      if (range && _selectionAnchor != null) {
+        final a = _selectionAnchor!;
+        final lo = a < r ? a : r;
+        final hi = a < r ? r : a;
+        if (!additive) _selectedRows.clear();
+        for (var i = lo; i <= hi; i++) {
+          _selectedRows.add(i);
+        }
+      } else if (additive) {
+        if (!_selectedRows.remove(r)) _selectedRows.add(r);
+        _selectionAnchor = r;
+      } else {
+        _selectedRows
+          ..clear()
+          ..add(r);
+        _selectionAnchor = r;
+      }
+    });
+    _gridFocus.requestFocus(); // 拿到焦点,Cmd/Ctrl+C 才能拦到
+  }
+
+  void _selectAll() {
+    setState(() {
+      _selectedRows
+        ..clear()
+        ..addAll([for (var i = 0; i < _totalRows; i++) i]);
+      _selectionAnchor = 0;
+    });
+  }
+
+  /// 选中行拼成文本:tsv=Tab 分隔(粘进表格更稳),否则 CSV(RFC4180 转义)
+  String _selectedText({required bool tsv}) {
+    final indices = _selectedRows.toList()..sort();
+    final cols = widget.output.columns.length;
+    String cell(int r, int i) => _fullCellText(_valueAt(r, i));
+    if (tsv) {
+      return [
+        for (final r in indices)
+          [for (var i = 0; i < cols; i++) cell(r, i)].join('\t'),
+      ].join('\n');
+    }
+    String esc(String s) =>
+        (s.contains(',') ||
+            s.contains('"') ||
+            s.contains('\n') ||
+            s.contains('\r'))
+        ? '"${s.replaceAll('"', '""')}"'
+        : s;
+    return [
+      for (final r in indices)
+        [for (var i = 0; i < cols; i++) esc(cell(r, i))].join(','),
+    ].join('\n');
+  }
+
+  void _copySelected({required bool tsv}) {
+    if (_selectedRows.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: _selectedText(tsv: tsv)));
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(tr2('已复制 {0} 行', [_selectedRows.length])),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// 网格快捷键:Cmd/Ctrl+C 复制选中行,Cmd/Ctrl+A 全选
+  KeyEventResult _handleGridKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final kb = HardwareKeyboard.instance;
+    if (!(kb.isMetaPressed || kb.isControlPressed)) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyC) {
+      if (_selectedRows.isEmpty) return KeyEventResult.ignored;
+      _copySelected(tsv: true);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyA) {
+      _selectAll();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   // ── 编辑动作 ──
 
@@ -316,30 +428,43 @@ class _DbDataGridState extends State<DbDataGrid> {
 
   @override
   Widget build(BuildContext context) {
-    return Scrollbar(
-      controller: _horizontal,
-      child: SingleChildScrollView(
-        controller: _horizontal,
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: _totalWidth,
-          child: Column(
-            children: [
-              _buildHeader(),
-              Expanded(
-                child: Scrollbar(
-                  controller: _vertical,
-                  child: ListView.builder(
-                    controller: _vertical,
-                    itemExtent: _rowHeight,
-                    itemCount: _totalRows,
-                    itemBuilder: (context, r) => _buildRow(r),
-                  ),
+    return Focus(
+      focusNode: _gridFocus,
+      onKeyEvent: _handleGridKey,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // 内容比可视区窄时把宽度撑满:列仍靠左,但斑马纹/分隔线/选中底色
+          // 铺满整条,不再留一段空白显得表格"悬浮居中"。
+          final width = _totalWidth > constraints.maxWidth
+              ? _totalWidth
+              : constraints.maxWidth;
+          return Scrollbar(
+            controller: _horizontal,
+            child: SingleChildScrollView(
+              controller: _horizontal,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: width,
+                child: Column(
+                  children: [
+                    _buildHeader(),
+                    Expanded(
+                      child: Scrollbar(
+                        controller: _vertical,
+                        child: ListView.builder(
+                          controller: _vertical,
+                          itemExtent: _rowHeight,
+                          itemCount: _totalRows,
+                          itemBuilder: (context, r) => _buildRow(r),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -466,11 +591,14 @@ class _DbDataGridState extends State<DbDataGrid> {
     final added = _isAddedRow(r);
     final removed = _isRemoved(r);
 
+    final selected = _selectedRows.contains(r);
     final Color background;
     if (removed) {
       background = AppTheme.errorColor.withValues(alpha: 0.10);
     } else if (added) {
       background = AppTheme.successColor.withValues(alpha: 0.10);
+    } else if (selected) {
+      background = AppTheme.brandColor.withValues(alpha: hovered ? 0.28 : 0.20);
     } else if (hovered) {
       background = AppTheme.softBrandColor.withValues(alpha: 0.55);
     } else if (r.isOdd) {
@@ -491,9 +619,15 @@ class _DbDataGridState extends State<DbDataGrid> {
   List<Widget> _buildRowCells(int r) {
     final removed = _isRemoved(r);
     final added = _isAddedRow(r);
+    final selected = _selectedRows.contains(r);
     return [
-      // 行号槽 + 删除/恢复按钮
-      SizedBox(
+      // 行号槽 + 删除/恢复按钮(点空白处选中整行)
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _selectRow(r),
+        onSecondaryTapDown: (details) =>
+            _showRowMenu(details.globalPosition, r),
+        child: SizedBox(
         width: _rowNumberWidth,
         child: Row(
           children: [
@@ -525,12 +659,16 @@ class _DbDataGridState extends State<DbDataGrid> {
                   textAlign: TextAlign.right,
                   style: _monoStyle.copyWith(
                     fontSize: 9.5,
-                    color: AppTheme.subtleTextColor,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    color: selected
+                        ? AppTheme.brandColor
+                        : AppTheme.subtleTextColor,
                   ),
                 ),
               ),
             ),
           ],
+        ),
         ),
       ),
       for (var c = 0; c < widget.output.columns.length; c++)
@@ -553,7 +691,8 @@ class _DbDataGridState extends State<DbDataGrid> {
     final bg = edited ? AppTheme.warningColor.withValues(alpha: 0.22) : null;
 
     return GestureDetector(
-      // 双击进入编辑;单击不做复制(避免双击时先弹复制提示),复制走右键菜单
+      // 单击选中整行;双击进入编辑;右键菜单复制
+      onTap: () => _selectRow(r),
       onDoubleTap: widget.editable ? () => _startEdit(r, c) : null,
       onSecondaryTapDown: (details) =>
           _showCellMenu(details.globalPosition, r, c, value),
@@ -609,24 +748,28 @@ class _DbDataGridState extends State<DbDataGrid> {
   }
 
   void _showCellMenu(Offset position, int r, int c, Object? value) {
-    final text = _cellText(value);
+    // 右键的行若不在当前选择内,先把它单选(符合直觉:右键即作用于此行)
+    if (!_selectedRows.contains(r)) _selectRow(r);
+    final multi = _selectedRows.length > 1;
     showGlassMenu<String>(
       context: context,
       position: position,
       items: [
-        PopupMenuItem(value: 'copy', height: 36, child: Text(tr('复制值'), style: TextStyle(fontSize: 13))),
-        PopupMenuItem(value: 'copy_row', height: 36, child: Text(tr('复制整行(CSV)'), style: TextStyle(fontSize: 13))),
+        _menuItem('copy', tr('复制值')),
+        _menuItem('copy_row', tr('复制整行(CSV)')),
+        if (multi) ...[
+          const PopupMenuDivider(),
+          _menuItem('copy_sel_tsv', tr2('复制选中 {0} 行(TSV)', [_selectedRows.length])),
+          _menuItem('copy_sel_csv', tr2('复制选中 {0} 行(CSV)', [_selectedRows.length])),
+        ],
+        _menuItem('select_all', tr('全选')),
         if (widget.editable) ...[
           const PopupMenuDivider(),
-          PopupMenuItem(value: 'edit', height: 36, child: Text(tr('编辑'), style: TextStyle(fontSize: 13))),
-          PopupMenuItem(value: 'set_null', height: 36, child: Text(tr('设为 NULL'), style: TextStyle(fontSize: 13))),
-          PopupMenuItem(
-            value: 'delete',
-            height: 36,
-            child: Text(
-              _isRemoved(r) ? tr('恢复此行') : tr('标记删除此行'),
-              style: const TextStyle(fontSize: 13),
-            ),
+          _menuItem('edit', tr('编辑')),
+          _menuItem('set_null', tr('设为 NULL')),
+          _menuItem(
+            'delete',
+            _isRemoved(r) ? tr('恢复此行') : tr('标记删除此行'),
           ),
         ],
       ],
@@ -638,9 +781,15 @@ class _DbDataGridState extends State<DbDataGrid> {
         case 'copy_row':
           final cells = [
             for (var i = 0; i < widget.output.columns.length; i++)
-              _cellText(_valueAt(r, i)),
+              _fullCellText(_valueAt(r, i)),
           ];
           Clipboard.setData(ClipboardData(text: cells.join(',')));
+        case 'copy_sel_tsv':
+          _copySelected(tsv: true);
+        case 'copy_sel_csv':
+          _copySelected(tsv: false);
+        case 'select_all':
+          _selectAll();
         case 'edit':
           _startEdit(r, c);
         case 'set_null':
@@ -649,9 +798,45 @@ class _DbDataGridState extends State<DbDataGrid> {
           widget.onToggleDelete?.call(r);
       }
     });
-    // 引用 text 避免未使用告警(部分平台菜单未展开时)
-    assert(text.isEmpty || text.isNotEmpty);
   }
+
+  /// 行号槽右键菜单:专注于「选中行」的复制
+  void _showRowMenu(Offset position, int r) {
+    if (!_selectedRows.contains(r)) _selectRow(r);
+    final n = _selectedRows.length;
+    showGlassMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        _menuItem('copy_sel_tsv', tr2('复制选中 {0} 行(TSV)', [n])),
+        _menuItem('copy_sel_csv', tr2('复制选中 {0} 行(CSV)', [n])),
+        _menuItem('select_all', tr('全选')),
+        if (widget.editable && widget.onToggleDelete != null)
+          _menuItem(
+            'delete',
+            _isRemoved(r) ? tr('恢复此行') : tr('标记删除此行'),
+          ),
+      ],
+    ).then((action) {
+      if (action == null || !mounted) return;
+      switch (action) {
+        case 'copy_sel_tsv':
+          _copySelected(tsv: true);
+        case 'copy_sel_csv':
+          _copySelected(tsv: false);
+        case 'select_all':
+          _selectAll();
+        case 'delete':
+          widget.onToggleDelete?.call(r);
+      }
+    });
+  }
+
+  PopupMenuItem<String> _menuItem(String value, String label) => PopupMenuItem(
+    value: value,
+    height: 36,
+    child: Text(label, style: const TextStyle(fontSize: 13)),
+  );
 }
 
 /// 列头漏斗过滤按钮 — 点击时把自身屏幕位置回传,便于在其下方弹出面板

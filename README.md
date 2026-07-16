@@ -30,9 +30,9 @@
 
 ---
 
-## 📥 Download Release (v0.0.35)
+## 📥 Download Release (v0.0.36)
 
-- **macOS Installer (.dmg)**: [Download Termora-v0.0.35-macOS.dmg](https://github.com/pynets/termora/releases/download/v0.0.35/Termora-v0.0.35-macOS.dmg)
+- **macOS Installer (.dmg)**: [Download Termora-v0.0.36-macOS.dmg](https://github.com/pynets/termora/releases/download/v0.0.36/Termora-v0.0.36-macOS.dmg)
 - **All Releases**: [GitHub Releases Page](https://github.com/pynets/termora/releases)
 
 ---

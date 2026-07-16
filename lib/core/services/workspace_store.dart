@@ -95,14 +95,23 @@ class WorkspaceStore {
 
   // ── SQL 编辑器文本 ──
 
-  static Future<String> loadSqlText() async {
+  static Future<String> loadSqlText({String? connectionId}) async {
     final prefs = await SharedPreferences.getInstance();
+    if (connectionId != null && connectionId.isNotEmpty) {
+      final perConn = prefs.getString('database.sql_text.$connectionId');
+      if (perConn != null) return perConn;
+      return prefs.getString(_sqlTextKey) ?? '';
+    }
     return prefs.getString(_sqlTextKey) ?? '';
   }
 
-  static Future<void> saveSqlText(String text) async {
+  static Future<void> saveSqlText(String text, {String? connectionId}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_sqlTextKey, text);
+    if (connectionId != null && connectionId.isNotEmpty) {
+      await prefs.setString('database.sql_text.$connectionId', text);
+    } else {
+      await prefs.setString(_sqlTextKey, text);
+    }
   }
 
   // ── 上次活动连接(启动时自动重连)──
