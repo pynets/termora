@@ -19,6 +19,14 @@ enum _TerminalOverflowAction {
   splitHorizontal,
   splitVertical,
   closePane,
+  highlight,
+  theme,
+  broadcast,
+  syncScroll,
+  sessionLog,
+  minimizePane,
+  minimap,
+  detailsPanel,
 }
 
 enum _FooterChipTone { neutral, active, warning }

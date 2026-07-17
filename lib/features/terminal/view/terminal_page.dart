@@ -869,7 +869,9 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
 
   void _closePane(int paneId) {
     // 仅剩一个分屏且没有最小化的会话可退路时,本地终端页保底不关
-    if (_root is _PaneLeaf && _sessions.length <= 1 && !widget.remoteWorkspace) {
+    if (_root is _PaneLeaf &&
+        _sessions.length <= 1 &&
+        !widget.remoteWorkspace) {
       return;
     }
     final leaf = _leafById(paneId);
@@ -5329,23 +5331,6 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                       unawaited(_showSnippetMenu(pos));
                     }),
               ),
-              const SizedBox(width: 2),
-              _toolbarButton(
-                tr('触发器高亮'),
-                LucideIcons.highlighter300,
-                () => unawaited(showHighlightManager(context)),
-              ),
-              const SizedBox(width: 2),
-              Builder(
-                builder: (btnContext) =>
-                    _toolbarButton(tr('配色方案'), LucideIcons.palette300, () {
-                      final box = btnContext.findRenderObject() as RenderBox?;
-                      final pos = box == null
-                          ? Offset.zero
-                          : box.localToGlobal(box.size.bottomLeft(Offset.zero));
-                      unawaited(_showThemeMenu(pos));
-                    }),
-              ),
               if (widget.remoteCommand != null &&
                   widget.onOpenRemoteFiles != null) ...[
                 const SizedBox(width: 2),
@@ -5379,63 +5364,39 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   _forceScrollToBottom,
                 ),
               ],
-              if (!compact) ...[
-                const SizedBox(width: 2),
-                _toolbarButton(
-                  tr('向右分屏'),
-                  LucideIcons.columns2300,
-                  widget.onSplitHorizontal,
-                ),
-                const SizedBox(width: 2),
-                _toolbarButton(
-                  tr('向下分屏'),
-                  LucideIcons.rows2300,
-                  widget.onSplitVertical,
-                ),
-              ],
-              if (widget.broadcastAvailable) ...[
+              // 开着的状态开关(广播/同步滚动/日志录制)保留在外面提示状态,
+              // 其余不常用按钮统一收进「更多」下拉
+              if (widget.broadcastAvailable && widget.broadcastEnabled) ...[
                 const SizedBox(width: 2),
                 _TerminalIconButton(
-                  tooltip: widget.broadcastEnabled
-                      ? tr('命令广播:开(输入同时发给所有会话)— 点击关闭')
-                      : tr('命令广播:输入同时发给所有会话'),
+                  tooltip: tr('命令广播:开(输入同时发给所有会话)— 点击关闭'),
                   icon: LucideIcons.radio300,
                   size: 24,
                   iconSize: 13,
-                  ghost: !widget.broadcastEnabled,
+                  ghost: false,
                   onPressed: widget.onToggleBroadcast,
                 ),
+              ],
+              if (widget.broadcastAvailable && widget.syncScrollEnabled) ...[
                 const SizedBox(width: 2),
                 _TerminalIconButton(
-                  tooltip: widget.syncScrollEnabled
-                      ? tr('同步滚动:开(所有分屏一起滚)— 点击关闭')
-                      : tr('同步滚动:所有分屏一起滚动'),
+                  tooltip: tr('同步滚动:开(所有分屏一起滚)— 点击关闭'),
                   icon: LucideIcons.arrowDownUp300,
                   size: 24,
                   iconSize: 13,
-                  ghost: !widget.syncScrollEnabled,
+                  ghost: false,
                   onPressed: widget.onToggleSyncScroll,
                 ),
               ],
-              const SizedBox(width: 2),
-              _TerminalIconButton(
-                tooltip: _sessionLogger.isActive
-                    ? tr('会话日志:录制中(输出落盘)— 点击停止')
-                    : tr('会话日志:录制终端输出到本地文件'),
-                icon: _sessionLogger.isActive
-                    ? LucideIcons.circleStop300
-                    : LucideIcons.circleDot300,
-                size: 24,
-                iconSize: 13,
-                ghost: !_sessionLogger.isActive,
-                onPressed: () => unawaited(_toggleSessionLog()),
-              ),
-              if (widget.onMinimizePane != null) ...[
+              if (_sessionLogger.isActive) ...[
                 const SizedBox(width: 2),
-                _toolbarButton(
-                  tr('最小化到标签'),
-                  LucideIcons.minimize2300,
-                  widget.onMinimizePane,
+                _TerminalIconButton(
+                  tooltip: tr('会话日志:录制中(输出落盘)— 点击停止'),
+                  icon: LucideIcons.circleStop300,
+                  size: 24,
+                  iconSize: 13,
+                  ghost: false,
+                  onPressed: () => unawaited(_toggleSessionLog()),
                 ),
               ],
               if (widget.canClosePane) ...[
@@ -5446,27 +5407,6 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
                   () => unawaited(_confirmClosePane()),
                 ),
               ],
-              const SizedBox(width: 2),
-              _TerminalIconButton(
-                tooltip: _minimapVisible ? tr('隐藏缩略图') : tr('缩略图导航'),
-                icon: LucideIcons.map300,
-                size: 24,
-                iconSize: 13,
-                ghost: !_minimapVisible,
-                onPressed: () =>
-                    setState(() => _minimapVisible = !_minimapVisible),
-              ),
-              const SizedBox(width: 2),
-              _TerminalIconButton(
-                tooltip: _detailsPanelVisible ? tr('隐藏详情面板') : tr('详情面板'),
-                icon: _detailsPanelVisible
-                    ? LucideIcons.panelRightClose300
-                    : LucideIcons.panelRight300,
-                size: 24,
-                iconSize: 13,
-                ghost: !_detailsPanelVisible,
-                onPressed: _toggleDetailsPanel,
-              ),
               const SizedBox(width: 2),
               _buildOverflowMenu(ui, compact: compact),
             ];
@@ -5648,8 +5588,11 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     );
   }
 
+  final GlobalKey _overflowBtnKey = GlobalKey();
+
   Widget _buildOverflowMenu(TerminalUiState ui, {required bool compact}) {
     return SizedBox(
+      key: _overflowBtnKey,
       width: 24,
       height: 24,
       child: GlassPopupMenuButton<_TerminalOverflowAction>(
@@ -5670,21 +5613,67 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         ),
         onSelected: _handleOverflowAction,
         itemBuilder: (context) => [
-          if (compact) ...[
+          _overflowItem(
+            _TerminalOverflowAction.splitHorizontal,
+            LucideIcons.columns2300,
+            tr('向右分屏'),
+            enabled: widget.onSplitHorizontal != null,
+          ),
+          _overflowItem(
+            _TerminalOverflowAction.splitVertical,
+            LucideIcons.rows2300,
+            tr('向下分屏'),
+            enabled: widget.onSplitVertical != null,
+          ),
+          if (widget.onMinimizePane != null)
             _overflowItem(
-              _TerminalOverflowAction.splitHorizontal,
-              LucideIcons.columns2300,
-              tr('向右分屏'),
-              enabled: widget.onSplitHorizontal != null,
+              _TerminalOverflowAction.minimizePane,
+              LucideIcons.minimize2300,
+              tr('最小化到标签'),
+            ),
+          const PopupMenuDivider(),
+          _overflowItem(
+            _TerminalOverflowAction.minimap,
+            LucideIcons.map300,
+            _minimapVisible ? tr('隐藏缩略图') : tr('缩略图导航'),
+          ),
+          _overflowItem(
+            _TerminalOverflowAction.detailsPanel,
+            _detailsPanelVisible
+                ? LucideIcons.panelRightClose300
+                : LucideIcons.panelRight300,
+            _detailsPanelVisible ? tr('隐藏详情面板') : tr('详情面板'),
+          ),
+          if (widget.broadcastAvailable) ...[
+            _overflowItem(
+              _TerminalOverflowAction.broadcast,
+              LucideIcons.radio300,
+              widget.broadcastEnabled ? tr('关闭命令广播') : tr('命令广播'),
             ),
             _overflowItem(
-              _TerminalOverflowAction.splitVertical,
-              LucideIcons.rows2300,
-              tr('向下分屏'),
-              enabled: widget.onSplitVertical != null,
+              _TerminalOverflowAction.syncScroll,
+              LucideIcons.arrowDownUp300,
+              widget.syncScrollEnabled ? tr('关闭同步滚动') : tr('同步滚动'),
             ),
-            const PopupMenuDivider(),
           ],
+          _overflowItem(
+            _TerminalOverflowAction.sessionLog,
+            _sessionLogger.isActive
+                ? LucideIcons.circleStop300
+                : LucideIcons.circleDot300,
+            _sessionLogger.isActive ? tr('停止会话日志') : tr('录制会话日志'),
+          ),
+          _overflowItem(
+            _TerminalOverflowAction.highlight,
+            LucideIcons.highlighter300,
+            tr('触发器高亮'),
+          ),
+          _overflowItem(
+            _TerminalOverflowAction.theme,
+            LucideIcons.palette300,
+            tr('配色方案'),
+          ),
+          const PopupMenuDivider(),
           _overflowItem(
             _TerminalOverflowAction.copyAll,
             LucideIcons.copy300,
@@ -5802,7 +5791,31 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         widget.onSplitVertical?.call();
       case _TerminalOverflowAction.closePane:
         unawaited(_confirmClosePane());
+      case _TerminalOverflowAction.highlight:
+        unawaited(showHighlightManager(context));
+      case _TerminalOverflowAction.theme:
+        unawaited(_showThemeMenu(_overflowMenuAnchor()));
+      case _TerminalOverflowAction.broadcast:
+        widget.onToggleBroadcast?.call();
+      case _TerminalOverflowAction.syncScroll:
+        widget.onToggleSyncScroll?.call();
+      case _TerminalOverflowAction.sessionLog:
+        unawaited(_toggleSessionLog());
+      case _TerminalOverflowAction.minimizePane:
+        widget.onMinimizePane?.call();
+      case _TerminalOverflowAction.minimap:
+        setState(() => _minimapVisible = !_minimapVisible);
+      case _TerminalOverflowAction.detailsPanel:
+        _toggleDetailsPanel();
     }
+  }
+
+  /// 「更多」按钮左下角的全局坐标,用作二级菜单(配色方案)的锚点
+  Offset _overflowMenuAnchor() {
+    final box =
+        _overflowBtnKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return Offset.zero;
+    return box.localToGlobal(box.size.bottomLeft(Offset.zero));
   }
 
   Future<void> _confirmClosePane() async {
