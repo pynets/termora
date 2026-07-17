@@ -235,6 +235,12 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
   /// 挂在树里保活(pty/滚动缓冲不断),点标签放回分屏。
   final Set<String> _minimizedKeys = <String>{};
 
+  /// 正在「摆放」的最小化会话:点标签拿起,影子跟随鼠标,
+  /// 悬停分屏高亮落点(上下左右/中),点击放下;右键/Esc 取消
+  String? _placingKey;
+  Offset? _placingCursor;
+  final FocusNode _placingFocus = FocusNode(debugLabel: 'pane-placing');
+
   /// 命令广播(sync input):开启后任一分屏的输入同时发给所有会话
   bool _broadcastInput = false;
 
@@ -299,6 +305,7 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
       _saveSessionsDebounce!.cancel();
       unawaited(_saveSessions());
     }
+    _placingFocus.dispose();
     super.dispose();
   }
 
@@ -659,9 +666,14 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
   }
 
   void _selectSession(String providerKey) {
-    // 最小化的会话:点标签放回分屏
+    // 最小化的会话:点标签「拿起」进入摆放模式,再点目标分屏放下
+    // (再点一次同标签取消;摆放中点其它最小化标签则换目标)
     if (_minimizedKeys.contains(providerKey)) {
-      _restoreSession(providerKey);
+      if (_placingKey == providerKey) {
+        _cancelPlacing();
+      } else {
+        _beginPlacing(providerKey);
+      }
       return;
     }
     // Sessions map 1:1 to visible panes, so selecting simply focuses the
@@ -685,32 +697,34 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
     unawaited(_saveSessions());
   }
 
-  /// 恢复最小化的会话:优先占用空占位分屏,否则在活动分屏右侧展开
-  void _restoreSession(String providerKey) {
-    if (!_minimizedKeys.contains(providerKey)) return;
+  void _beginPlacing(String providerKey) {
     setState(() {
-      _minimizedKeys.remove(providerKey);
-      final placeholder = _leafShowing('');
-      if (placeholder != null) {
-        placeholder.sessionKey = providerKey;
-        _activePaneId = placeholder.id;
-        return;
-      }
-      final active = _activeLeaf();
-      final newLeaf = _PaneLeaf(id: _nextPaneId++, sessionKey: providerKey);
-      if (active == null) {
-        _root = newLeaf;
-      } else {
-        _root = _replaceLeafWithBranch(
-          _root,
-          active.id,
-          Axis.horizontal,
-          newLeaf,
-        );
-      }
-      _activePaneId = newLeaf.id;
+      _placingKey = providerKey;
+      _placingCursor = null;
     });
-    unawaited(_saveSessions());
+    _placingFocus.requestFocus();
+  }
+
+  void _cancelPlacing() {
+    if (_placingKey == null) return;
+    setState(() {
+      _placingKey = null;
+      _placingCursor = null;
+    });
+  }
+
+  /// 摆放落位:把拿起的最小化会话放到目标分屏的指定区域
+  void _completePlacing(int paneId, _DropRegion region) {
+    final key = _placingKey;
+    if (key == null) return;
+    setState(() {
+      _placingKey = null;
+      _placingCursor = null;
+    });
+    // 会话可能在摆放途中被关闭,只有仍在最小化集合里才落位
+    if (_minimizedKeys.contains(key)) {
+      _handlePaneDrop(paneId, region, key);
+    }
   }
 
   void _addSession({_TerminalSessionDescriptor? descriptor}) {
@@ -1101,25 +1115,96 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
     // Every non-minimized session maps 1:1 to a visible pane. Minimized
     // sessions stay mounted offstage (same GlobalKey) so their pty keeps
     // running; restoring simply reparents the live state back into the tree.
+    final paneStack = Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildPaneNode(_root),
+        for (final descriptor in _sessions)
+          if (_minimizedKeys.contains(descriptor.providerKey))
+            Offstage(
+              child: TickerMode(
+                enabled: false,
+                child: _buildSessionHost(
+                  descriptor,
+                  isActive: false,
+                  leaf: null,
+                ),
+              ),
+            ),
+      ],
+    );
+    if (_placingKey == null) {
+      return Container(color: AppTheme.surfaceColor, child: paneStack);
+    }
+    // 摆放模式:提示条 + 会话影子跟随鼠标,Esc 取消
+    final placingTitle = _descriptorFor(_placingKey!)?.title ?? '';
+    final cursor = _placingCursor;
     return Container(
       color: AppTheme.surfaceColor,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _buildPaneNode(_root),
-          for (final descriptor in _sessions)
-            if (_minimizedKeys.contains(descriptor.providerKey))
-              Offstage(
-                child: TickerMode(
-                  enabled: false,
-                  child: _buildSessionHost(
-                    descriptor,
-                    isActive: false,
-                    leaf: null,
+      child: Focus(
+        focusNode: _placingFocus,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.escape) {
+            _cancelPlacing();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: MouseRegion(
+          onHover: (e) => setState(() => _placingCursor = e.localPosition),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              paneStack,
+              Positioned(
+                top: 10,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: AppTheme.brandColor.withValues(alpha: 0.5),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        tr2('点击目标分屏放置「{0}」· 右键或 Esc 取消', [placingTitle]),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.headingColor,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-        ],
+              if (cursor != null)
+                Positioned(
+                  left: cursor.dx + 14,
+                  top: cursor.dy + 14,
+                  child: IgnorePointer(
+                    child: _TerminalDragFeedback(title: placingTitle),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1182,21 +1267,31 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
     if (descriptor == null) {
       // 空占位分屏(会话都最小化了):提示从底部标签恢复
       if (_minimizedKeys.isNotEmpty) {
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                LucideIcons.minimize2300,
-                size: 36,
-                color: AppTheme.subtleTextColor.withValues(alpha: 0.5),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                tr('会话已最小化,点击下方标签恢复'),
-                style: TextStyle(fontSize: 13, color: AppTheme.subtleTextColor),
-              ),
-            ],
+        return _PaneDropTarget(
+          paneId: leaf.id,
+          onDrop: _handlePaneDrop,
+          placingKey: _placingKey,
+          onPlace: _completePlacing,
+          onCancelPlace: _cancelPlacing,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  LucideIcons.minimize2300,
+                  size: 36,
+                  color: AppTheme.subtleTextColor.withValues(alpha: 0.5),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  tr('会话已最小化,点击下方标签恢复'),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.subtleTextColor,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       }
@@ -1206,6 +1301,9 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
     return _PaneDropTarget(
       paneId: leaf.id,
       onDrop: _handlePaneDrop,
+      placingKey: _placingKey,
+      onPlace: _completePlacing,
+      onCancelPlace: _cancelPlacing,
       child: _buildSessionHost(descriptor, isActive: isActive, leaf: leaf),
     );
   }

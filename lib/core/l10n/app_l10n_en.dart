@@ -134,6 +134,8 @@ const Map<String, String> kAppL10nEn = {
   '会话日志:录制中(输出落盘)— 点击停止':
       'Session log: recording (output on disk) — click to stop',
   '会话日志:录制终端输出到本地文件': 'Session log: record terminal output to a local file',
+  '点击目标分屏放置「{0}」· 右键或 Esc 取消':
+      'Click a pane to place "{0}" · right-click or Esc to cancel',
   '命令广播': 'Broadcast input',
   '关闭命令广播': 'Turn off broadcast',
   '同步滚动': 'Sync scroll',

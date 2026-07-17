@@ -230,7 +230,11 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
   }
 
   /// 从 run 里抠出格偏移 [cutFrom, cutTo) 的文本,组合字符跟随前一个字形
-  _TerminalGridRun? _sliceRunText(_TerminalGridRun run, int cutFrom, int cutTo) {
+  _TerminalGridRun? _sliceRunText(
+    _TerminalGridRun run,
+    int cutFrom,
+    int cutTo,
+  ) {
     if (cutTo <= cutFrom) return null;
     final buffer = StringBuffer();
     var cell = 0;
@@ -296,7 +300,11 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
     return offsets.last + (column - (offsets.length - 1)) * cellWidth;
   }
 
-  Widget _buildCursor(int column, List<double>? offsets, [double originPx = 0]) {
+  Widget _buildCursor(
+    int column,
+    List<double>? offsets, [
+    double originPx = 0,
+  ]) {
     final safeColumn = math.max(0, column);
     final left = _pixelForColumn(offsets, safeColumn) - originPx;
     final cursorWidth = math.max(2.0, widget.metrics.cellWidth);
@@ -429,8 +437,9 @@ class _TerminalOutputTextState extends State<_TerminalOutputText> {
     // 内置 URL 检测 + 自定义正则规则(xterm.js registerLinkMatcher 式),
     // 统一收集后按起点排序、丢弃与已接受区间重叠的命中(URL 优先)。
     final segments = <({int start, int end, String url, bool builtin})>[
-      for (final m in _TerminalSessionViewState._terminalLinkPattern
-          .allMatches(text))
+      for (final m in _TerminalSessionViewState._terminalLinkPattern.allMatches(
+        text,
+      ))
         (start: m.start, end: m.end, url: '', builtin: true),
       for (final hit in LinkMatcherStore.findHits(text))
         (start: hit.start, end: hit.end, url: hit.url, builtin: false),
@@ -739,7 +748,10 @@ class _TerminalGridPainter extends CustomPainter {
 
   void _paintRunText(Canvas canvas, _TerminalGridRun run) {
     // 背景已按格宽画过,字形样式里剥掉 backgroundColor 防止按文本宽二次上色
-    final style = run.style.copyWith(height: 1.0, backgroundColor: Colors.transparent);
+    final style = run.style.copyWith(
+      height: 1.0,
+      backgroundColor: Colors.transparent,
+    );
     final cell = metrics.cellWidth;
     var column = run.column;
     final ascii = StringBuffer();
@@ -1032,9 +1044,7 @@ class _TerminalSessionTab extends ConsumerWidget {
       data: _TerminalDragData(sessionKey),
       dragAnchorStrategy: pointerDragAnchorStrategy,
       feedback: _TerminalDragFeedback(title: title),
-      child: isMinimized
-          ? Tooltip(message: tr('已最小化,点击恢复'), child: tab)
-          : tab,
+      child: isMinimized ? Tooltip(message: tr('已最小化,点击恢复'), child: tab) : tab,
     );
   }
 }
@@ -1067,7 +1077,10 @@ Future<bool> _showCloseTerminalConfirm(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: Text(tr('取消'), style: TextStyle(color: AppTheme.subtleTextColor)),
+          child: Text(
+            tr('取消'),
+            style: TextStyle(color: AppTheme.subtleTextColor),
+          ),
         ),
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -1231,11 +1244,19 @@ class _PaneDropTarget extends StatefulWidget {
   const _PaneDropTarget({
     required this.paneId,
     required this.onDrop,
+    this.placingKey,
+    this.onPlace,
+    this.onCancelPlace,
     required this.child,
   });
 
   final int paneId;
   final void Function(int paneId, _DropRegion region, String sessionKey) onDrop;
+
+  /// 非空 = 摆放模式:悬停高亮落点,点击放下 [placingKey],右键取消
+  final String? placingKey;
+  final void Function(int paneId, _DropRegion region)? onPlace;
+  final VoidCallback? onCancelPlace;
   final Widget child;
 
   @override
@@ -1254,6 +1275,7 @@ class _PaneDropTargetState extends State<_PaneDropTarget> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.placingKey != null) return _buildPlacing(context);
     return DragTarget<_TerminalDragData>(
       onWillAcceptWithDetails: (_) => true,
       onMove: (details) {
@@ -1282,6 +1304,43 @@ class _PaneDropTargetState extends State<_PaneDropTarget> {
           ],
         );
       },
+    );
+  }
+
+  /// 摆放模式:不依赖真实拖拽会话,用悬停算落点、点击落位。
+  /// 期间分屏内容对指针只读(IgnorePointer),避免误触终端。
+  Widget _buildPlacing(BuildContext context) {
+    return MouseRegion(
+      onHover: (e) {
+        final region = _regionForGlobal(e.position);
+        if (region != _hovered) setState(() => _hovered = region);
+      },
+      onExit: (_) {
+        if (_hovered != null) setState(() => _hovered = null);
+      },
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (e) {
+          if (e.buttons & kSecondaryMouseButton != 0) {
+            widget.onCancelPlace?.call();
+          }
+        },
+        onPointerUp: (e) {
+          final region = _regionForGlobal(e.position) ?? _DropRegion.center;
+          widget.onPlace?.call(widget.paneId, region);
+        },
+        child: Stack(
+          key: _boxKey,
+          fit: StackFit.expand,
+          children: [
+            IgnorePointer(child: widget.child),
+            if (_hovered != null)
+              Positioned.fill(
+                child: IgnorePointer(child: _buildDropHighlight(_hovered!)),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1441,7 +1500,11 @@ class _TerminalFilesTab extends StatefulWidget {
   remoteUploadDir;
 
   /// 下载远端文件/目录到本地路径,返回 0..1 进度流
-  final Stream<double> Function(String remotePath, String localPath, bool isDir)?
+  final Stream<double> Function(
+    String remotePath,
+    String localPath,
+    bool isDir,
+  )?
   remoteDownloader;
 
   /// 重命名(同目录改名)/ 删除 / 新建目录;非空才显示对应操作
@@ -1488,8 +1551,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
   String? _error;
 
   bool get _isRemote => widget.remoteLister != null;
-  bool get _canTransfer =>
-      _isRemote && widget.remoteUploader != null;
+  bool get _canTransfer => _isRemote && widget.remoteUploader != null;
 
   /// 当前实际展示的根目录(远端空串 = 家目录,由上层解析);
   /// 探测目录列失败回落家目录后,它会变成 ''
@@ -1651,9 +1713,9 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(tr2('新建文件失败:{0}', [e]))),
-      );
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(tr2('新建文件失败:{0}', [e]))));
     }
   }
 
@@ -1691,7 +1753,10 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       node.isDir ? localPath : File(localPath).parent.path,
     );
     _startTransfer(
-      _PanelTransfer(label: node.isDir ? '${node.name}/' : node.name, isUpload: false),
+      _PanelTransfer(
+        label: node.isDir ? '${node.name}/' : node.name,
+        isUpload: false,
+      ),
       downloader(node.path, localPath, node.isDir),
     );
   }
@@ -1709,9 +1774,9 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       _loadRoot();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(tr2('操作失败:{0}', [e]))),
-      );
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(tr2('操作失败:{0}', [e]))));
     }
   }
 
@@ -1769,9 +1834,9 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
   Future<void> _copyNodePath(_FileNode node) async {
     await Clipboard.setData(ClipboardData(text: node.path));
     if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text(tr2('已复制路径:{0}', [node.path]))),
-    );
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(tr2('已复制路径:{0}', [node.path]))));
   }
 
   Future<String?> _promptName({
@@ -1896,11 +1961,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         if (node.isDir)
           PopupMenuItem(value: 'open', height: 34, child: Text(tr('打开'))),
         if (node.isDir && widget.onCdInTerminal != null)
-          const PopupMenuItem(
-            value: 'cd',
-            height: 34,
-            child: Text('在终端进入此目录'),
-          ),
+          const PopupMenuItem(value: 'cd', height: 34, child: Text('在终端进入此目录')),
         if (!node.isDir)
           PopupMenuItem(value: 'preview', height: 34, child: Text(tr('预览'))),
         if (!node.isDir)
@@ -2140,9 +2201,9 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       await Process.run('open', [localPath]);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text(tr2('打开失败:{0}', ['$e']))),
-        );
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(SnackBar(content: Text(tr2('打开失败:{0}', ['$e']))));
       }
     }
   }
@@ -2378,13 +2439,29 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         color: AppTheme.surfaceColor,
         itemBuilder: (context) => [
           if (_canTransfer)
-            PopupMenuItem(value: 'uploadFiles', height: 36, child: Text(tr('上传文件…'))),
+            PopupMenuItem(
+              value: 'uploadFiles',
+              height: 36,
+              child: Text(tr('上传文件…')),
+            ),
           if (widget.remoteUploadDir != null)
-            PopupMenuItem(value: 'uploadDir', height: 36, child: Text(tr('上传目录…'))),
+            PopupMenuItem(
+              value: 'uploadDir',
+              height: 36,
+              child: Text(tr('上传目录…')),
+            ),
           if (_canTransfer)
-            PopupMenuItem(value: 'newFile', height: 36, child: Text(tr('新建文件'))),
+            PopupMenuItem(
+              value: 'newFile',
+              height: 36,
+              child: Text(tr('新建文件')),
+            ),
           if (widget.remoteMakeDir != null)
-            PopupMenuItem(value: 'newDir', height: 36, child: Text(tr('新建文件夹'))),
+            PopupMenuItem(
+              value: 'newDir',
+              height: 36,
+              child: Text(tr('新建文件夹')),
+            ),
         ],
         onSelected: (v) {
           switch (v) {
@@ -2509,7 +2586,9 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
               borderRadius: BorderRadius.circular(2),
               child: LinearProgressIndicator(
                 minHeight: 4,
-                value: transfer.done ? 1.0 : (transfer.failed ? 0.0 : transfer.progress),
+                value: transfer.done
+                    ? 1.0
+                    : (transfer.failed ? 0.0 : transfer.progress),
                 backgroundColor: AppTheme.borderColor.withValues(alpha: 0.5),
                 color: color,
               ),
@@ -2784,7 +2863,12 @@ class _PanelFileRowState extends State<_PanelFileRow> {
     );
   }
 
-  Widget _rowAction(String tooltip, IconData icon, VoidCallback onPressed, {Color? color}) {
+  Widget _rowAction(
+    String tooltip,
+    IconData icon,
+    VoidCallback onPressed, {
+    Color? color,
+  }) {
     return SizedBox(
       width: 22,
       height: 22,
@@ -2854,7 +2938,11 @@ class _PanelFileRowState extends State<_PanelFileRow> {
                         widget.onDownload!,
                       ),
                     if (widget.onRename != null)
-                      _rowAction(tr('重命名'), LucideIcons.penLine300, widget.onRename!),
+                      _rowAction(
+                        tr('重命名'),
+                        LucideIcons.penLine300,
+                        widget.onRename!,
+                      ),
                     if (widget.onDelete != null)
                       _rowAction(
                         tr('删除'),
