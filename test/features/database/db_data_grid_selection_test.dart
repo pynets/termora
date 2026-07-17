@@ -107,6 +107,38 @@ void main() {
     expect(clip.last, '1\talice\n3\tcarol');
   });
 
+  testWidgets('编辑单元格时 Ctrl+C 不拦截为复制整行', (tester) async {
+    final clip = mockClipboard(tester);
+    final edits = DbEditSession();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DbDataGrid(
+            output: output,
+            editable: true,
+            edits: edits,
+            onCellEdit: (_, _, _, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 先单击选中该行(与真实交互一致),再双击进入编辑
+    await tester.tap(find.text('bob'));
+    await tester.pump();
+    await tester.tap(find.text('bob'));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tap(find.text('bob'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget); // 已进入编辑
+
+    await ctrl(tester, LogicalKeyboardKey.keyC);
+    // 网格不应把它当「复制整行」写剪贴板(文本框自己的复制走系统通道,
+    // 空选区时也不会写);更不能出现整行 TSV
+    expect(clip.where((t) => t.contains('\t')), isEmpty);
+  });
+
   testWidgets('无选择时 Ctrl+C 不写剪贴板', (tester) async {
     final clip = mockClipboard(tester);
     await pumpGrid(tester);

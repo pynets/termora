@@ -287,9 +287,12 @@ class _DbDataGridState extends State<DbDataGrid> {
     );
   }
 
-  /// 网格快捷键:Cmd/Ctrl+C 复制选中行,Cmd/Ctrl+A 全选
+  /// 网格快捷键:Cmd/Ctrl+C 复制选中行,Cmd/Ctrl+A 全选。
+  /// 正在编辑单元格时不拦截——按键冒泡自编辑框,Cmd+C/A 应是文本框自己的
+  /// 复制/全选,而不是复制整行。
   KeyEventResult _handleGridKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (_editingRow != null) return KeyEventResult.ignored;
     final kb = HardwareKeyboard.instance;
     if (!(kb.isMetaPressed || kb.isControlPressed)) {
       return KeyEventResult.ignored;

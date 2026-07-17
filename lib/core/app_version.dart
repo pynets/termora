@@ -1,4 +1,4 @@
 /// 应用版本单一来源 —— 发版时与 pubspec.yaml 的 version 同步改这里。
 /// (不引入 package_info_plus,保持零依赖;设置页与更新检测都读这里)
-const String kAppVersion = '0.0.36';
-const String kAppBuild = '38';
+const String kAppVersion = '0.0.39';
+const String kAppBuild = '41';

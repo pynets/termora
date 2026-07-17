@@ -59,7 +59,7 @@ final class TerminalUiControllerProvider
 }
 
 String _$terminalUiControllerHash() =>
-    r'de068e3365723e044943dcd62e0bcc49f8056d6e';
+    r'5552c9f033cf21b2c2d1da5ac5711f83c8b99b67';
 
 final class TerminalUiControllerFamily extends $Family
     with
@@ -93,7 +93,7 @@ abstract class _$TerminalUiController extends $Notifier<TerminalUiState> {
   TerminalUiState build(String sessionId);
   @$mustCallSuper
   @override
-  void runBuild() {
+  WhenComplete runBuild() {
     final ref = this.ref as $Ref<TerminalUiState, TerminalUiState>;
     final element =
         ref.element
@@ -103,6 +103,6 @@ abstract class _$TerminalUiController extends $Notifier<TerminalUiState> {
               Object?,
               Object?
             >;
-    element.handleCreate(ref, () => build(_$args));
+    return element.handleCreate(ref, () => build(_$args));
   }
 }
