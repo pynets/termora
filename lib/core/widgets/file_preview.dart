@@ -138,6 +138,9 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
   String? _text;
   bool _loading = true;
   bool _maximized = false;
+
+  /// 小窗浮动位置(相对居中原点的位移),拖标题栏调整;最大化/还原间保留
+  Offset _offset = Offset.zero;
   String? _error;
   late final FilePreviewKind _kind = FilePreviewDialog.kindOf(widget.name);
 
@@ -191,9 +194,24 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
     await widget.openExternally();
   }
 
+  void _dragBy(Offset delta) {
+    if (_maximized) return;
+    final screen = MediaQuery.sizeOf(context);
+    // 至少留半个窗口宽/一条标题栏在屏内,防止拖丢
+    final limitX = (screen.width / 2 - 60).clamp(0.0, double.infinity);
+    final limitY = (screen.height / 2 - 40).clamp(0.0, double.infinity);
+    setState(() {
+      final next = _offset + delta;
+      _offset = Offset(
+        next.dx.clamp(-limitX, limitX),
+        next.dy.clamp(-limitY, limitY),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    final dialog = Dialog(
       backgroundColor: AppTheme.surfaceColor,
       insetPadding: _maximized
           ? const EdgeInsets.all(12)
@@ -212,6 +230,9 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
         ),
       ),
     );
+    // 小窗=浮动窗口:按拖拽后的位移摆放;最大化时铺满、忽略位移
+    if (_maximized) return dialog;
+    return Transform.translate(offset: _offset, child: dialog);
   }
 
   Widget _buildHeader() {
@@ -224,60 +245,64 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onDoubleTap: () => setState(() => _maximized = !_maximized),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
-        ),
-        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-        child: Row(
-          children: [
-            Icon(icon, size: 15, color: AppTheme.brandColor),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                widget.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.headingColor,
+      onPanUpdate: (d) => _dragBy(d.delta),
+      child: MouseRegion(
+        cursor: _maximized ? MouseCursor.defer : SystemMouseCursors.move,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+          child: Row(
+            children: [
+              Icon(icon, size: 15, color: AppTheme.brandColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.headingColor,
+                  ),
                 ),
               ),
-            ),
-            IconButton(
-              tooltip: tr('用系统默认打开'),
-              icon: Icon(
-                LucideIcons.externalLink300,
-                size: 15,
-                color: AppTheme.subtleTextColor,
+              IconButton(
+                tooltip: tr('用系统默认打开'),
+                icon: Icon(
+                  LucideIcons.externalLink300,
+                  size: 15,
+                  color: AppTheme.subtleTextColor,
+                ),
+                visualDensity: VisualDensity.compact,
+                onPressed: _openExternally,
               ),
-              visualDensity: VisualDensity.compact,
-              onPressed: _openExternally,
-            ),
-            IconButton(
-              tooltip: _maximized ? tr('还原') : tr('最大化'),
-              icon: Icon(
-                _maximized
-                    ? LucideIcons.minimize2300
-                    : LucideIcons.maximize2300,
-                size: 15,
-                color: AppTheme.subtleTextColor,
+              IconButton(
+                tooltip: _maximized ? tr('还原') : tr('最大化'),
+                icon: Icon(
+                  _maximized
+                      ? LucideIcons.minimize2300
+                      : LucideIcons.maximize2300,
+                  size: 15,
+                  color: AppTheme.subtleTextColor,
+                ),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _maximized = !_maximized),
               ),
-              visualDensity: VisualDensity.compact,
-              onPressed: () => setState(() => _maximized = !_maximized),
-            ),
-            IconButton(
-              tooltip: tr('关闭'),
-              icon: Icon(
-                LucideIcons.x300,
-                size: 15,
-                color: AppTheme.subtleTextColor,
+              IconButton(
+                tooltip: tr('关闭'),
+                icon: Icon(
+                  LucideIcons.x300,
+                  size: 15,
+                  color: AppTheme.subtleTextColor,
+                ),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => Navigator.of(context).maybePop(),
               ),
-              visualDensity: VisualDensity.compact,
-              onPressed: () => Navigator.of(context).maybePop(),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
