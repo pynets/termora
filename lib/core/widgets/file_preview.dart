@@ -139,6 +139,9 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
   bool _loading = true;
   bool _maximized = false;
 
+  /// 还原后的「摆放」阶段:小窗吸附鼠标浮动,点击/松手才落位
+  bool _placing = false;
+
   /// 小窗浮动位置(相对居中原点的位移),拖标题栏调整;最大化/还原间保留
   Offset _offset = Offset.zero;
   String? _error;
@@ -194,18 +197,35 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
     await widget.openExternally();
   }
 
-  void _dragBy(Offset delta) {
-    if (_maximized) return;
+  void _setOffset(Offset next) {
     final screen = MediaQuery.sizeOf(context);
     // 至少留半个窗口宽/一条标题栏在屏内,防止拖丢
     final limitX = (screen.width / 2 - 60).clamp(0.0, double.infinity);
     final limitY = (screen.height / 2 - 40).clamp(0.0, double.infinity);
     setState(() {
-      final next = _offset + delta;
       _offset = Offset(
         next.dx.clamp(-limitX, limitX),
         next.dy.clamp(-limitY, limitY),
       );
+    });
+  }
+
+  void _dragBy(Offset delta) {
+    if (_maximized) return;
+    _setOffset(_offset + delta);
+  }
+
+  /// 摆放阶段:小窗中心跟随鼠标
+  void _followPointer(Offset globalPos) {
+    final screen = MediaQuery.sizeOf(context);
+    _setOffset(globalPos - Offset(screen.width / 2, screen.height / 2));
+  }
+
+  void _toggleMaximize() {
+    setState(() {
+      _maximized = !_maximized;
+      // 还原成小窗时不直接落回页面:先浮起跟随鼠标,由用户拖到位放下
+      _placing = !_maximized;
     });
   }
 
@@ -232,7 +252,21 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
     );
     // 小窗=浮动窗口:按拖拽后的位移摆放;最大化时铺满、忽略位移
     if (_maximized) return dialog;
-    return Transform.translate(offset: _offset, child: dialog);
+    final floating = Transform.translate(offset: _offset, child: dialog);
+    if (!_placing) return floating;
+    // 摆放阶段:整屏接管指针,窗口半透明吸附鼠标,点击/松手落位
+    return MouseRegion(
+      cursor: SystemMouseCursors.grabbing,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerHover: (e) => _followPointer(e.position),
+        onPointerMove: (e) => _followPointer(e.position),
+        onPointerUp: (_) => setState(() => _placing = false),
+        child: SizedBox.expand(
+          child: IgnorePointer(child: Opacity(opacity: 0.88, child: floating)),
+        ),
+      ),
+    );
   }
 
   Widget _buildHeader() {
@@ -244,7 +278,7 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
     };
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onDoubleTap: () => setState(() => _maximized = !_maximized),
+      onDoubleTap: _toggleMaximize,
       onPanUpdate: (d) => _dragBy(d.delta),
       child: MouseRegion(
         cursor: _maximized ? MouseCursor.defer : SystemMouseCursors.move,
@@ -289,7 +323,7 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
                   color: AppTheme.subtleTextColor,
                 ),
                 visualDensity: VisualDensity.compact,
-                onPressed: () => setState(() => _maximized = !_maximized),
+                onPressed: _toggleMaximize,
               ),
               IconButton(
                 tooltip: tr('关闭'),
