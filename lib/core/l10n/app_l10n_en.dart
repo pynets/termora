@@ -477,6 +477,8 @@ const Map<String, String> kAppL10nEn = {
   '新建分组…': 'New group…',
   '新建文件': 'New file',
   '新建文件失败:{0}': 'Failed to create file: {0}',
+  '无法上传文件夹「{0}」:该连接不支持':
+      'Cannot upload folder "{0}": not supported by this connection',
   '新建文件夹': 'New folder',
   '新建片段': 'New snippet',
   '新建片段…': 'New snippet…',

@@ -1738,12 +1738,33 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
   void _uploadPaths(List<String> localPaths, String remoteDir) {
     final uploader = widget.remoteUploader;
     if (uploader == null) return;
+    final uploadDir = widget.remoteUploadDir;
     for (final localPath in localPaths) {
-      final name = localPath.split('/').last;
-      _startTransfer(
-        _PanelTransfer(label: name, isUpload: true),
-        uploader(localPath, remoteDir),
-      );
+      // 拖入的可能是文件夹:目录走递归上传(put -r),否则普通 put。
+      // 末尾斜杠先剥掉,split 才能取到真正的名字
+      final clean = localPath.endsWith('/')
+          ? localPath.substring(0, localPath.length - 1)
+          : localPath;
+      final name = clean.split('/').last;
+      final isDir = FileSystemEntity.isDirectorySync(clean);
+      if (isDir) {
+        if (uploadDir == null) {
+          // 该会话未提供目录上传能力:明确报错,不再当普通文件传导致晦涩失败
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(content: Text(tr2('无法上传文件夹「{0}」:该连接不支持', [name]))),
+          );
+          continue;
+        }
+        _startTransfer(
+          _PanelTransfer(label: '$name/', isUpload: true),
+          uploadDir(clean, remoteDir),
+        );
+      } else {
+        _startTransfer(
+          _PanelTransfer(label: name, isUpload: true),
+          uploader(clean, remoteDir),
+        );
+      }
     }
   }
 
