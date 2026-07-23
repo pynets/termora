@@ -933,6 +933,7 @@ class _TerminalSessionTab extends ConsumerWidget {
     this.isMinimized = false,
     required this.onSelect,
     required this.onClose,
+    this.onRename,
   });
 
   final String sessionKey;
@@ -946,6 +947,9 @@ class _TerminalSessionTab extends ConsumerWidget {
   final VoidCallback onSelect;
   final VoidCallback onClose;
 
+  /// 双击标签 / 右键「重命名」触发改名
+  final VoidCallback? onRename;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final running = ref.watch(
@@ -955,6 +959,10 @@ class _TerminalSessionTab extends ConsumerWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onSelect,
+        onDoubleTap: onRename,
+        onSecondaryTapUp: onRename == null
+            ? null
+            : (d) => _showTabMenu(context, d.globalPosition),
         borderRadius: BorderRadius.circular(7),
         child: Container(
           padding: EdgeInsets.fromLTRB(10, 5, canClose ? 4 : 10, 5),
@@ -1046,6 +1054,58 @@ class _TerminalSessionTab extends ConsumerWidget {
       feedback: _TerminalDragFeedback(title: title),
       child: isMinimized ? Tooltip(message: tr('已最小化,点击恢复'), child: tab) : tab,
     );
+  }
+
+  Future<void> _showTabMenu(BuildContext context, Offset globalPos) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        globalPos.dx,
+        globalPos.dy,
+        overlay.size.width - globalPos.dx,
+        overlay.size.height - globalPos.dy,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'rename',
+          height: 38,
+          child: Row(
+            children: [
+              Icon(
+                LucideIcons.pencil300,
+                size: 15,
+                color: AppTheme.headingColor,
+              ),
+              const SizedBox(width: 8),
+              Text(tr('重命名'), style: const TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
+        if (canClose)
+          PopupMenuItem(
+            value: 'close',
+            height: 38,
+            child: Row(
+              children: [
+                Icon(LucideIcons.x300, size: 15, color: AppTheme.errorColor),
+                const SizedBox(width: 8),
+                Text(
+                  tr('关闭终端'),
+                  style: TextStyle(fontSize: 13, color: AppTheme.errorColor),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (selected == 'rename') {
+      onRename?.call();
+    } else if (selected == 'close') {
+      onClose();
+    }
   }
 }
 

@@ -386,7 +386,7 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
             // 恢复的 SSH 会话自动试拨一次(ControlMaster/密钥下无感;
             // 连不上会打「已断开,回车重连」),不再落成本地终端
             autoConnect: ((entry['remoteCommand'] as String?) ?? '').isNotEmpty,
-          ),
+          )..customTitle = entry['customTitle'] as String?,
         );
       }
       if (restored.isEmpty) return;
@@ -481,6 +481,8 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
               if (s.remoteKey != null) 'remoteKey': s.remoteKey,
               if (s.remoteTitle != null) 'remoteTitle': s.remoteTitle,
               if (s.remoteCommand != null) 'remoteCommand': s.remoteCommand,
+              if (s.customTitle != null && s.customTitle!.isNotEmpty)
+                'customTitle': s.customTitle,
             },
         ],
         'root': _paneNodeToJson(_root),
@@ -663,6 +665,53 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
   void _activatePane(int paneId) {
     if (_activePaneId == paneId) return;
     setState(() => _activePaneId = paneId);
+  }
+
+  /// 会话标签改名:弹框输入,空则清除自定义名回落默认标题
+  Future<void> _renameSession(_TerminalSessionDescriptor descriptor) async {
+    final controller = TextEditingController(text: descriptor.title);
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: controller.text.length,
+    );
+    final result = await showDialog<String>(
+      context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
+      builder: (context) => AlertDialog(
+        title: Text(tr('重命名标签')),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: descriptor.remoteTitle ?? tr2('终端 {0}', [descriptor.id]),
+            isDense: true,
+          ),
+          onSubmitted: (v) => Navigator.of(context).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(' '), // 清除标记
+            child: Text(tr('恢复默认')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(tr('取消')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: Text(tr('确定')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result == null || !mounted) return;
+    setState(() {
+      // ' ' = 恢复默认;其余按输入(去首尾空白,空串也视为清除)
+      descriptor.customTitle = result == ' ' ? null : result.trim();
+    });
+    unawaited(_saveSessions());
   }
 
   void _selectSession(String providerKey) {
@@ -1066,6 +1115,7 @@ class _TerminalPageState extends ConsumerState<TerminalPage> {
                         ),
                         onSelect: () => _selectSession(descriptor.providerKey),
                         onClose: () => _closeSession(descriptor.providerKey),
+                        onRename: () => _renameSession(descriptor),
                       ),
                     ),
                 ],
@@ -1591,7 +1641,12 @@ class _TerminalSessionDescriptor {
   /// Tracks the latest known CWD for session persistence.
   String? lastKnownCwd;
 
-  String get title => remoteTitle ?? tr2('终端 {0}', [id]);
+  /// 用户为标签自定义的名字(双击/右键改名);为空时回落默认标题
+  String? customTitle;
+
+  String get title => (customTitle != null && customTitle!.isNotEmpty)
+      ? customTitle!
+      : (remoteTitle ?? tr2('终端 {0}', [id]));
   String get providerKey => '${keyPrefix}_$id';
 }
 

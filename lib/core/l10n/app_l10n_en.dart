@@ -762,6 +762,7 @@ const Map<String, String> kAppL10nEn = {
   '酒红 (Burgundy)': 'Burgundy',
   '重做 (⌘⇧Z)': 'Redo (⌘⇧Z)',
   '重命名': 'Rename',
+  '重命名标签': 'Rename tab',
   '重命名 {0} → {1}…': 'Renaming {0} → {1}…',
   '重命名「{0}」…': 'Renaming "{0}"…',
   '重命名笔记本': 'Rename notebook',
