@@ -113,6 +113,8 @@ const Map<String, String> kAppL10nEn = {
   '下载到…': 'Download to…',
   '下载到本地栏': 'Download to local pane',
   '下载失败 HTTP {0}': 'Download failed: HTTP {0}',
+  '下载完成:{0}': 'Downloaded: {0}',
+  '打开所在目录': 'Show in folder',
   '下载目录': 'Download folder',
   '下载目录「{0}」到…': 'Download folder "{0}" to…',
   '不为空': 'Is not null',

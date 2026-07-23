@@ -1523,9 +1523,12 @@ class _TerminalFilesTab extends StatefulWidget {
 
 /// 详情面板里的一个传输项(上传/下载)
 class _PanelTransfer {
-  _PanelTransfer({required this.label, required this.isUpload});
+  _PanelTransfer({required this.label, required this.isUpload, this.localPath});
   final String label;
   final bool isUpload;
+
+  /// 下载落地的本地路径(文件或目录),完成后用于「打开所在目录」
+  final String? localPath;
   double progress = 0;
   bool done = false;
   bool failed = false;
@@ -1658,6 +1661,19 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
           transfer.progress = 1;
         });
         _loadRoot();
+        // 下载完成:提示可一键在 Finder 定位落地文件
+        if (!transfer.isUpload && transfer.localPath != null) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(tr2('下载完成:{0}', [transfer.label])),
+              action: SnackBarAction(
+                label: tr('打开所在目录'),
+                onPressed: () =>
+                    unawaited(Process.run('open', ['-R', transfer.localPath!])),
+              ),
+            ),
+          );
+        }
       },
     );
   }
@@ -1756,6 +1772,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
       _PanelTransfer(
         label: node.isDir ? '${node.name}/' : node.name,
         isUpload: false,
+        localPath: localPath,
       ),
       downloader(node.path, localPath, node.isDir),
     );
@@ -2752,6 +2769,7 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
         _PanelTransfer(
           label: node.isDir ? '${node.name}/' : node.name,
           isUpload: false,
+          localPath: '$targetDir/${node.name}',
         ),
         downloader(node.path, '$targetDir/${node.name}', node.isDir),
       );

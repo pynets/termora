@@ -497,6 +497,61 @@ class _SftpBrowserState extends State<SftpBrowser> {
     );
   }
 
+  /// 下载完成提示:附「打开所在目录」按钮,点一下在 Finder 里定位落地文件
+  void _toastDownloadDone(_Transfer t) {
+    if (!mounted) return;
+    final dir = t.localDir;
+    if (dir == null) return;
+    final name = t.label.endsWith('/')
+        ? t.label.substring(0, t.label.length - 1)
+        : t.label;
+    final landed = _join(dir, name);
+    late final ToastificationItem item;
+    item = AppToast.show(
+      context: context,
+      style: ToastificationStyle.flat,
+      applyBlurEffect: true,
+      type: ToastificationType.success,
+      autoCloseDuration: const Duration(seconds: 5),
+      title: Text(
+        tr2('下载完成:{0}', [t.label]),
+        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w400),
+      ),
+      description: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: InkWell(
+          onTap: () {
+            _revealInFinder(landed);
+            toastification.dismiss(item);
+          },
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  LucideIcons.folderOpen300,
+                  size: 13,
+                  color: AppTheme.brandColor,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  tr('打开所在目录'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.brandColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 退出提权:清掉内存里的密码,回到登录用户身份
   void _dropElevation() {
     setState(() {
@@ -838,8 +893,10 @@ class _SftpBrowserState extends State<SftpBrowser> {
         if (transfer.isUpload && transfer.remoteDir == _remotePath) {
           unawaited(_refreshRemote());
         }
-        if (!transfer.isUpload && transfer.localDir == _localPath) {
-          unawaited(_refreshLocal());
+        if (!transfer.isUpload) {
+          if (transfer.localDir == _localPath) unawaited(_refreshLocal());
+          // 下载完成:弹提示,可一键打开落地目录
+          _toastDownloadDone(transfer);
         }
       }
     } on SftpException catch (error) {
@@ -1354,7 +1411,10 @@ class _SftpBrowserState extends State<SftpBrowser> {
   // ── 远端文件直接编辑(下载→系统编辑器→保存自动回传)──
 
   /// 把条目落成本地路径:本地栏直接返回,远端栏下载到临时文件
-  Future<String> _materializeEntry(SftpEntry entry, {required bool isRemote}) async {
+  Future<String> _materializeEntry(
+    SftpEntry entry, {
+    required bool isRemote,
+  }) async {
     if (!isRemote) return _join(_localPath, entry.name);
     final tempDir = await Directory.systemTemp.createTemp('termora_preview_');
     final localPath = '${tempDir.path}/${entry.name}';
@@ -1374,9 +1434,9 @@ class _SftpBrowserState extends State<SftpBrowser> {
       builder: (context) => FilePreviewDialog(
         name: entry.name,
         size: entry.size,
-        readBytes: () async =>
-            File(await _materializeEntry(entry, isRemote: isRemote))
-                .readAsBytes(),
+        readBytes: () async => File(
+          await _materializeEntry(entry, isRemote: isRemote),
+        ).readAsBytes(),
         openExternally: () async {
           try {
             final path = await _materializeEntry(entry, isRemote: isRemote);
