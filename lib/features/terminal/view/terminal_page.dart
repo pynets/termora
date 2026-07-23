@@ -1800,7 +1800,13 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   bool _autoFollowOutput = true;
   bool _isSearchVisible = false;
   bool _detailsPanelVisible = false;
+  double _detailsPanelWidth = _defaultDetailsWidth;
   bool _minimapVisible = false;
+
+  static const _detailsWidthPrefKey = 'workbench_terminal_details_width_v1';
+  static const _defaultDetailsWidth = 320.0;
+  static const _minDetailsWidth = 240.0;
+  static const _maxDetailsWidth = 640.0;
   _TerminalPanelTab _activePanelTab = _TerminalPanelTab.files;
   String? _runningCommand;
   String _searchQuery = '';
@@ -1993,6 +1999,7 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
         : _initialWorkingDirectory;
     _scrollController.addListener(_handleScrollChanged);
     FocusManager.instance.addListener(_handleGlobalFocusChange);
+    unawaited(_loadDetailsWidth());
     unawaited(_resolveLoginShellPath());
     _resetSession();
     _publishUiState();
@@ -5043,6 +5050,35 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
     setState(() => _detailsPanelVisible = !_detailsPanelVisible);
   }
 
+  Future<void> _loadDetailsWidth() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getDouble(_detailsWidthPrefKey);
+      if (stored == null || !mounted) return;
+      final clamped = stored
+          .clamp(_minDetailsWidth, _maxDetailsWidth)
+          .toDouble();
+      if (clamped == _detailsPanelWidth) return;
+      setState(() => _detailsPanelWidth = clamped);
+    } catch (_) {}
+  }
+
+  Future<void> _persistDetailsWidth() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_detailsWidthPrefKey, _detailsPanelWidth);
+    } catch (_) {}
+  }
+
+  void _resizeDetailsPanel(double dx) {
+    // 面板贴右边:向左拖(dx<0)变宽,向右拖变窄
+    final next = (_detailsPanelWidth - dx)
+        .clamp(_minDetailsWidth, _maxDetailsWidth)
+        .toDouble();
+    if (next == _detailsPanelWidth) return;
+    setState(() => _detailsPanelWidth = next);
+  }
+
   void _insertIntoInput(String text) {
     if (_isNativePtyActive) {
       unawaited(_writeNativePtyInput(text));
@@ -5107,27 +5143,59 @@ class _TerminalSessionViewState extends ConsumerState<_TerminalSessionView>
   }
 
   Widget _buildDetailsPanel(BuildContext context) {
-    return Container(
-      width: 320,
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        border: Border(left: BorderSide(color: AppTheme.borderColor)),
-        // 浮动在终端上方,用投影托起层次
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 16,
-            offset: const Offset(-4, 0),
+    return SizedBox(
+      width: _detailsPanelWidth,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceColor,
+                border: Border(left: BorderSide(color: AppTheme.borderColor)),
+                // 浮动在终端上方,用投影托起层次
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 16,
+                    offset: const Offset(-4, 0),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildPanelTabBar(),
+                  Divider(height: 1, thickness: 1, color: AppTheme.borderColor),
+                  Expanded(child: _buildPanelContent()),
+                ],
+              ),
+            ),
+          ),
+          // 左边缘拖拽把手:调节面板宽窄
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 8,
+            child: _buildDetailsResizeHandle(),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildPanelTabBar(),
-          Divider(height: 1, thickness: 1, color: AppTheme.borderColor),
-          Expanded(child: _buildPanelContent()),
-        ],
+    );
+  }
+
+  Widget _buildDetailsResizeHandle() {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (d) => _resizeDetailsPanel(d.delta.dx),
+        onHorizontalDragEnd: (_) => unawaited(_persistDetailsWidth()),
+        onDoubleTap: () {
+          setState(() => _detailsPanelWidth = _defaultDetailsWidth);
+          unawaited(_persistDetailsWidth());
+        },
+        child: const SizedBox.expand(),
       ),
     );
   }
