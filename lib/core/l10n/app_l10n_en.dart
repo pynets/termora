@@ -147,6 +147,7 @@ const Map<String, String> kAppL10nEn = {
   '传输中': 'Transferring',
   '传输中 {0} 项': 'Transferring {0} items',
   '传输失败:{0} — {1}': 'Transfer failed: {0} — {1}',
+  '传输失败:{0}': 'Transfer failed: {0}',
   '传输记录': 'Transfer history',
   '使用 SSL / TLS': 'Use SSL / TLS',
   '保存': 'Save',

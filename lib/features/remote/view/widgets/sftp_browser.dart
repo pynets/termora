@@ -899,18 +899,21 @@ class _SftpBrowserState extends State<SftpBrowser> {
           _toastDownloadDone(transfer);
         }
       }
-    } on SftpException catch (error) {
+    } catch (error) {
+      // SftpException 直接取 message;其它异常(不应发生)也兜住,避免
+      // 传输行卡在「进行中」且无任何原因
       transfer.poll?.cancel();
       if (!mounted) return;
-      final denied = !_elevated && error.message.contains('Permission denied');
+      final message = error is SftpException ? error.message : '$error';
+      final denied = !_elevated && message.contains('Permission denied');
       setState(() {
         transfer.state = _TransferState.failed;
-        transfer.error = error.message;
+        transfer.error = message;
         _logTransfer(transfer);
         // 失败原因直接亮在状态栏,不用悬停传输行才看到;权限问题提示可提权
         _status = denied
             ? tr2('权限不足:{0}。点右上角盾牌图标提权后重试(sudo 或 su root)。', [transfer.label])
-            : tr2('传输失败:{0} — {1}', [transfer.label, error.message]);
+            : tr2('传输失败:{0} — {1}', [transfer.label, message]);
         _statusIsError = true;
       });
     }
@@ -2411,6 +2414,67 @@ class _SftpBrowserState extends State<SftpBrowser> {
     );
   }
 
+  /// 失败传输:弹窗展示完整原因(可选中复制),并按情形给出重试
+  Future<void> _showTransferError(_Transfer transfer) async {
+    final detail = (transfer.error?.isNotEmpty ?? false)
+        ? transfer.error!
+        : tr('sftp 操作失败');
+    final canRetry = transfer.starter != null;
+    final retry = await showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              LucideIcons.circleAlert300,
+              size: 18,
+              color: AppTheme.errorColor,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                tr2('传输失败:{0}', [transfer.label]),
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: SingleChildScrollView(
+            child: SelectableText(
+              detail,
+              style: const TextStyle(
+                fontFamily: 'Menlo',
+                fontSize: 12,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Clipboard.setData(ClipboardData(text: detail)),
+            child: Text(tr('复制')),
+          ),
+          if (canRetry)
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(tr('重试')),
+            )
+          else
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(tr('关闭')),
+            ),
+        ],
+      ),
+    );
+    if (retry == true) _retryTransfer(transfer);
+  }
+
   Widget _buildTransferRow(_Transfer transfer) {
     final Color stateColor;
     switch (transfer.state) {
@@ -2423,6 +2487,8 @@ class _SftpBrowserState extends State<SftpBrowser> {
       case _TransferState.running:
         stateColor = AppTheme.brandColor;
     }
+    final failed = transfer.state == _TransferState.failed;
+    final hasError = failed && (transfer.error?.isNotEmpty ?? false);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -2461,14 +2527,46 @@ class _SftpBrowserState extends State<SftpBrowser> {
             ),
           ),
           const SizedBox(width: 8),
-          SizedBox(
-            width: 44,
-            child: Text(
-              transfer.progressLabel,
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 10.5, color: stateColor),
+          // 失败:「失败」文字可点,弹窗看完整原因;否则纯展示进度文案
+          if (failed)
+            InkWell(
+              onTap: () => _showTransferError(transfer),
+              borderRadius: BorderRadius.circular(4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      transfer.progressLabel,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: stateColor,
+                        decoration: hasError ? TextDecoration.underline : null,
+                        decorationColor: stateColor,
+                      ),
+                    ),
+                    if (hasError) ...[
+                      const SizedBox(width: 3),
+                      Icon(
+                        LucideIcons.circleAlert300,
+                        size: 11,
+                        color: stateColor,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              width: 44,
+              child: Text(
+                transfer.progressLabel,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 10.5, color: stateColor),
+              ),
             ),
-          ),
           SizedBox(
             width: 22,
             height: 22,
