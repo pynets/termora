@@ -2581,6 +2581,59 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
     setState(() => transfer.cancelled = true);
   }
 
+  /// 失败传输:弹窗展示完整原因(可选中复制)
+  Future<void> _showPanelTransferError(_PanelTransfer transfer) async {
+    final detail = (transfer.error?.isNotEmpty ?? false)
+        ? transfer.error!
+        : tr('sftp 操作失败');
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: false,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              LucideIcons.circleAlert300,
+              size: 18,
+              color: AppTheme.errorColor,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                tr2('传输失败:{0}', [transfer.label]),
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: SingleChildScrollView(
+            child: SelectableText(
+              detail,
+              style: const TextStyle(
+                fontFamily: 'Menlo',
+                fontSize: 12,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Clipboard.setData(ClipboardData(text: detail)),
+            child: Text(tr('复制')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(tr('关闭')),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTransferRow(_PanelTransfer transfer) {
     final Color color = transfer.failed
         ? AppTheme.errorColor
@@ -2633,14 +2686,44 @@ class _TerminalFilesTabState extends State<_TerminalFilesTab> {
             ),
           ),
           const SizedBox(width: 8),
-          SizedBox(
-            width: 34,
-            child: Text(
-              label,
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 10.5, color: color),
+          // 失败:文字可点,弹窗看完整原因;否则纯展示
+          if (transfer.failed)
+            InkWell(
+              onTap: () => _showPanelTransferError(transfer),
+              borderRadius: BorderRadius.circular(4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: color,
+                        decoration: (transfer.error?.isNotEmpty ?? false)
+                            ? TextDecoration.underline
+                            : null,
+                        decorationColor: color,
+                      ),
+                    ),
+                    if (transfer.error?.isNotEmpty ?? false) ...[
+                      const SizedBox(width: 3),
+                      Icon(LucideIcons.circleAlert300, size: 11, color: color),
+                    ],
+                  ],
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              width: 34,
+              child: Text(
+                label,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 10.5, color: color),
+              ),
             ),
-          ),
           SizedBox(
             width: 20,
             height: 20,
