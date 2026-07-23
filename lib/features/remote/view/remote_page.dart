@@ -217,8 +217,9 @@ class _RemotePageState extends ConsumerState<RemotePage> {
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.brandColor,
               ),
-              onPressed: () => Navigator.of(context)
-                  .pop((su: su, password: controller.text)),
+              onPressed: () => Navigator.of(
+                context,
+              ).pop((su: su, password: controller.text)),
               child: Text(tr('提权')),
             ),
           ],
@@ -305,8 +306,9 @@ class _RemotePageState extends ConsumerState<RemotePage> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                color:
-                    selected ? AppTheme.headingColor : AppTheme.subtleTextColor,
+                color: selected
+                    ? AppTheme.headingColor
+                    : AppTheme.subtleTextColor,
               ),
             ),
           ],
@@ -320,7 +322,9 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     if (path.isEmpty || path == '~') return SftpService.homeDirectory(host);
     if (path.startsWith('~/')) {
       final home = await SftpService.homeDirectory(host);
-      return home == '/' ? '/${path.substring(2)}' : '$home/${path.substring(2)}';
+      return home == '/'
+          ? '/${path.substring(2)}'
+          : '$home/${path.substring(2)}';
     }
     return path;
   }
@@ -583,9 +587,34 @@ class _RemotePageState extends ConsumerState<RemotePage> {
         return;
       }
       handle = elev != null
-          ? await SudoFileService.startUploadDir(host, elev.password, localDir, dir)
+          ? await SudoFileService.startUploadDir(
+              host,
+              elev.password,
+              localDir,
+              dir,
+            )
           : await SftpService.startUploadDir(host, localDir, dir);
-      await handle!.done;
+      // 进度:本地总字节已知,轮询远端目标目录 du 累计大小算比例
+      // (提权模式不轮询,避免额外 sudo 交互;跌到 0.99 封顶,留 1.0 给完成)
+      Timer? poll;
+      if (elev == null) {
+        final total = await _localDirSize(localDir);
+        final baseName = localDir.split('/').where((s) => s.isNotEmpty).last;
+        final target = dir == '/' ? '/$baseName' : '$dir/$baseName';
+        if (total > 0) {
+          poll = Timer.periodic(const Duration(seconds: 1), (_) async {
+            final size = await SftpService.dirSize(host, target);
+            if (size != null && !controller.isClosed) {
+              controller.add((size / total).clamp(0.0, 0.99));
+            }
+          });
+        }
+      }
+      try {
+        await handle!.done;
+      } finally {
+        poll?.cancel();
+      }
     }
 
     run()
@@ -601,6 +630,23 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     return controller.stream;
   }
 
+  /// 本地目录累计字节(递归,忽略符号链接与读取失败项),目录上传进度分母用
+  Future<int> _localDirSize(String path) async {
+    var total = 0;
+    try {
+      await for (final e in Directory(
+        path,
+      ).list(recursive: true, followLinks: false)) {
+        if (e is File) {
+          try {
+            total += await e.length();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return total;
+  }
+
   /// 在远端目录跑 git(经 ssh 复用 ControlMaster,免再认证)
   Future<ProcessResult?> _runRemoteGit(
     String hostId,
@@ -614,10 +660,14 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     final command = "git -C '$quotedDir' ${args.join(' ')}";
     try {
       return await Process.run('/usr/bin/ssh', [
-        '-o', 'ControlMaster=auto',
-        '-o', 'ControlPath=~/.termora/cm-%C',
-        '-o', 'ControlPersist=10m',
-        '-o', 'BatchMode=yes',
+        '-o',
+        'ControlMaster=auto',
+        '-o',
+        'ControlPath=~/.termora/cm-%C',
+        '-o',
+        'ControlPersist=10m',
+        '-o',
+        'BatchMode=yes',
         if (host.port != 22) ...['-p', '${host.port}'],
         if (host.keyPath.isNotEmpty) ...['-i', host.keyPath],
         host.target,
@@ -658,9 +708,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
 
   /// 传输记录查看页(跨全部主机的 SFTP 历史)
   void _showTransferLog() {
-    final names = {
-      for (final h in ref.read(sshHostsProvider)) h.id: h.name,
-    };
+    final names = {for (final h in ref.read(sshHostsProvider)) h.id: h.name};
     unawaited(
       showDialog<void>(
         context: context,
@@ -717,7 +765,9 @@ class _RemotePageState extends ConsumerState<RemotePage> {
   /// 快速把主机移动到某分组(空串=移出分组)。
   Future<void> _setHostGroup(SshHost host, String group) async {
     if (host.group == group) return;
-    await ref.read(sshHostsProvider.notifier).upsert(host.copyWith(group: group));
+    await ref
+        .read(sshHostsProvider.notifier)
+        .upsert(host.copyWith(group: group));
   }
 
   /// 右键菜单里选「移动到分组」:列出已有分组 + 新建 + 移出。
@@ -819,45 +869,45 @@ class _RemotePageState extends ConsumerState<RemotePage> {
               children: [
                 // 底层:终端工作区 + 永远可见的收起竖条(终端只让出竖条宽度)
                 Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Offstage(
-                      offstage: _sftpHost != null,
-                      child: TerminalPage.remoteWorkspace(
-                        controller: _workspace,
-                        onOpenRemoteFiles: _openSftpByHostId,
-                        listRemoteDir: _listRemoteDir,
-                        uploadToRemote: _uploadToRemote,
-                        uploadDirToRemote: _uploadDirToRemote,
-                        downloadFromRemote: _downloadFromRemote,
-                        remoteFileActions: _remoteFileActions,
-                        runRemoteGit: _runRemoteGit,
-                        isRemoteElevated: _isHostElevated,
-                        elevateRemote: _elevateHost,
-                        dropRemoteElevation: _dropHostElevation,
+                    Expanded(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Offstage(
+                            offstage: _sftpHost != null,
+                            child: TerminalPage.remoteWorkspace(
+                              controller: _workspace,
+                              onOpenRemoteFiles: _openSftpByHostId,
+                              listRemoteDir: _listRemoteDir,
+                              uploadToRemote: _uploadToRemote,
+                              uploadDirToRemote: _uploadDirToRemote,
+                              downloadFromRemote: _downloadFromRemote,
+                              remoteFileActions: _remoteFileActions,
+                              runRemoteGit: _runRemoteGit,
+                              isRemoteElevated: _isHostElevated,
+                              elevateRemote: _elevateHost,
+                              dropRemoteElevation: _dropHostElevation,
+                            ),
+                          ),
+                          if (_sftpHost != null)
+                            SftpBrowser(
+                              key: ValueKey('sftp_${_sftpHost!.id}'),
+                              host: _sftpHost!,
+                              initialPath: _sftpInitialPath,
+                              onClose: () => setState(() => _sftpHost = null),
+                            ),
+                        ],
                       ),
                     ),
-                    if (_sftpHost != null)
-                      SftpBrowser(
-                        key: ValueKey('sftp_${_sftpHost!.id}'),
-                        host: _sftpHost!,
-                        initialPath: _sftpInitialPath,
-                        onClose: () => setState(() => _sftpHost = null),
-                      ),
+                    VerticalDivider(width: 0.5, color: AppTheme.borderColor),
+                    SizedBox(
+                      width: _railWidth,
+                      child: _buildCollapsedSidebar(hosts),
+                    ),
                   ],
                 ),
-              ),
-              VerticalDivider(width: 0.5, color: AppTheme.borderColor),
-              SizedBox(
-                width: _railWidth,
-                child: _buildCollapsedSidebar(hosts),
-              ),
-            ],
-          ),
                 // 上层:点击竖条外区域关闭的遮罩 + 从右侧浮出的主机面板
                 _buildFloatingSidebar(hosts),
               ],
@@ -885,9 +935,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 200),
                 opacity: _sidebarOpen ? 1 : 0,
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.18),
-                ),
+                child: ColoredBox(color: Colors.black.withValues(alpha: 0.18)),
               ),
             ),
             // 面板:从右侧滑入
@@ -959,7 +1007,8 @@ class _RemotePageState extends ConsumerState<RemotePage> {
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 2),
                     itemCount: hosts.length,
-                    itemBuilder: (context, index) => _railHostAvatar(hosts[index]),
+                    itemBuilder: (context, index) =>
+                        _railHostAvatar(hosts[index]),
                   ),
           ),
           Divider(
@@ -993,7 +1042,8 @@ class _RemotePageState extends ConsumerState<RemotePage> {
     final initial = String.fromCharCode(label.runes.first).toUpperCase();
     final tint = _avatarColor(host);
     return Tooltip(
-      message: '$label · ${host.target}${host.port != 22 ? ':${host.port}' : ''}',
+      message:
+          '$label · ${host.target}${host.port != 22 ? ':${host.port}' : ''}',
       waitDuration: const Duration(milliseconds: 300),
       preferBelow: false,
       child: Padding(
@@ -1181,11 +1231,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
             borderRadius: BorderRadius.circular(9),
             hoverColor: AppTheme.subtleSurfaceColor.withValues(alpha: 0.8),
             onTap: onTap,
-            child: SizedBox(
-              width: 32,
-              height: 32,
-              child: Center(child: child),
-            ),
+            child: SizedBox(width: 32, height: 32, child: Center(child: child)),
           ),
         ),
       ),
@@ -1268,9 +1314,7 @@ class _RemotePageState extends ConsumerState<RemotePage> {
           ),
           if (hosts.isNotEmpty) _buildSearchBar(),
           Expanded(
-            child: hosts.isEmpty
-                ? _buildEmptySidebar()
-                : _buildHostList(hosts),
+            child: hosts.isEmpty ? _buildEmptySidebar() : _buildHostList(hosts),
           ),
         ],
       ),
@@ -1518,94 +1562,102 @@ class _HostTileState extends State<_HostTile> {
         child: GestureDetector(
           onSecondaryTapUp: (d) => widget.onMoveToGroup(d.globalPosition),
           child: Material(
-          color: _hovered
-              ? AppTheme.subtleSurfaceColor.withValues(alpha: 0.7)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
+            color: _hovered
+                ? AppTheme.subtleSurfaceColor.withValues(alpha: 0.7)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
-            onDoubleTap: widget.onConnect,
-            onTap: () {},
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-              child: Row(
-                children: [
-                  Icon(
-                    LucideIcons.server300,
-                    size: 14,
-                    color: AppTheme.brandColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          host.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.headingColor,
-                          ),
-                        ),
-                        Text(
-                          [
-                            host.target,
-                            if (host.port != 22) ':${host.port}',
-                          ].join(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.subtleTextColor,
-                          ),
-                        ),
-                      ],
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onDoubleTap: widget.onConnect,
+              onTap: () {},
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                child: Row(
+                  children: [
+                    Icon(
+                      LucideIcons.server300,
+                      size: 14,
+                      color: AppTheme.brandColor,
                     ),
-                  ),
-                  if (_hovered) ...[
-                    Builder(
-                      builder: (btnContext) => _tileAction(
-                        tr('移动到分组'),
-                        LucideIcons.folderInput300,
-                        () {
-                          final box =
-                              btnContext.findRenderObject() as RenderBox?;
-                          final pos = box == null
-                              ? Offset.zero
-                              : box.localToGlobal(
-                                  box.size.bottomLeft(Offset.zero),
-                                );
-                          widget.onMoveToGroup(pos);
-                        },
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            host.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.headingColor,
+                            ),
+                          ),
+                          Text(
+                            [
+                              host.target,
+                              if (host.port != 22) ':${host.port}',
+                            ].join(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.subtleTextColor,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    _tileAction(tr('编辑'), LucideIcons.penLine300, widget.onEdit),
-                    _tileAction(tr('删除'), LucideIcons.trash300, widget.onRemove),
+                    if (_hovered) ...[
+                      Builder(
+                        builder: (btnContext) => _tileAction(
+                          tr('移动到分组'),
+                          LucideIcons.folderInput300,
+                          () {
+                            final box =
+                                btnContext.findRenderObject() as RenderBox?;
+                            final pos = box == null
+                                ? Offset.zero
+                                : box.localToGlobal(
+                                    box.size.bottomLeft(Offset.zero),
+                                  );
+                            widget.onMoveToGroup(pos);
+                          },
+                        ),
+                      ),
+                      _tileAction(
+                        tr('编辑'),
+                        LucideIcons.penLine300,
+                        widget.onEdit,
+                      ),
+                      _tileAction(
+                        tr('删除'),
+                        LucideIcons.trash300,
+                        widget.onRemove,
+                      ),
+                      _tileAction(
+                        tr('端口转发'),
+                        LucideIcons.waypoints300,
+                        widget.onTunnels,
+                      ),
+                    ],
                     _tileAction(
-                      tr('端口转发'),
-                      LucideIcons.waypoints300,
-                      widget.onTunnels,
+                      tr('文件(SFTP)'),
+                      LucideIcons.folder300,
+                      widget.onBrowseFiles,
+                    ),
+                    _tileAction(
+                      tr('连接'),
+                      LucideIcons.play300,
+                      widget.onConnect,
+                      color: AppTheme.brandColor,
                     ),
                   ],
-                  _tileAction(
-                    tr('文件(SFTP)'),
-                    LucideIcons.folder300,
-                    widget.onBrowseFiles,
-                  ),
-                  _tileAction(
-                    tr('连接'),
-                    LucideIcons.play300,
-                    widget.onConnect,
-                    color: AppTheme.brandColor,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
         ),
       ),
     );

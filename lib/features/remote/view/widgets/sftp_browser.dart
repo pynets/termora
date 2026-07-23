@@ -962,6 +962,36 @@ class _SftpBrowserState extends State<SftpBrowser> {
         });
       });
 
+  /// 目录上传进度轮询:周期性 du 远端目标目录累计大小(比文件 stat 重,间隔放大)。
+  /// 分母 = 本地目录总字节(t.total);du 是块占用,略大,封顶 99% 留给完成。
+  Timer _dirSizePoll(_Transfer t, String remoteDirPath) =>
+      Timer.periodic(const Duration(seconds: 1), (_) {
+        if (t.state != _TransferState.running) return;
+        SftpService.dirSize(widget.host, remoteDirPath).then((size) {
+          if (!mounted || t.state != _TransferState.running) return;
+          final total = t.total;
+          if (size == null || total == null || total <= 0) return;
+          setState(() => t.transferred = size.clamp(0, (total * 0.99).round()));
+        });
+      });
+
+  /// 本地目录累计字节(递归,忽略符号链接与读取失败项)
+  Future<int> _localDirSize(String path) async {
+    var total = 0;
+    try {
+      await for (final e in Directory(
+        path,
+      ).list(recursive: true, followLinks: false)) {
+        if (e is File) {
+          try {
+            total += await e.length();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return total;
+  }
+
   /// 下载(拖拽/行按钮/菜单):直接落到本地栏目录,免文件选择器
   Future<void> _downloadToLocal(
     SftpEntry entry, {
@@ -1017,13 +1047,23 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final name = localPath.split('/').where((s) => s.isNotEmpty).lastOrNull;
     if (name == null) return;
     if (FileSystemEntity.isDirectorySync(localPath)) {
+      // 分母:本地目录总字节;非提权才轮询远端 du 算进度(提权 du 可能读不到)
+      final total = await _localDirSize(localPath);
       final transfer = _Transfer(
         label: '$name/',
         isUpload: true,
         remoteDir: targetDir,
+        total: total > 0 ? total : null,
       );
+      final remoteTarget = _join(targetDir, name);
       unawaited(
-        _beginTransfer(transfer, () => _startUploadDir(localPath, targetDir)),
+        _beginTransfer(
+          transfer,
+          () => _startUploadDir(localPath, targetDir),
+          pollFactory: (total > 0 && _elevPassword == null)
+              ? (t) => _dirSizePoll(t, remoteTarget)
+              : null,
+        ),
       );
       return;
     }

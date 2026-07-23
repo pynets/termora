@@ -53,10 +53,14 @@ class SftpService {
 
   static List<String> _args(SshHost host, {required List<String> tail}) => [
     '-q',
-    '-o', 'ControlMaster=auto',
-    '-o', 'ControlPath=~/.termora/cm-%C',
-    '-o', 'ControlPersist=10m',
-    '-o', 'ServerAliveInterval=30',
+    '-o',
+    'ControlMaster=auto',
+    '-o',
+    'ControlPath=~/.termora/cm-%C',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ServerAliveInterval=30',
     if (host.port != 22) ...['-P', '${host.port}'],
     if (host.keyPath.isNotEmpty) ...['-i', host.keyPath],
     ...tail,
@@ -111,9 +115,7 @@ class SftpService {
   /// 远端家目录(绝对路径),作为浏览起点
   static Future<String> homeDirectory(SshHost host) async {
     final out = await _run(host, ['pwd']);
-    final match = RegExp(
-      r'Remote working directory:\s*(.+)',
-    ).firstMatch(out);
+    final match = RegExp(r'Remote working directory:\s*(.+)').firstMatch(out);
     final home = match?.group(1)?.trim();
     return (home == null || home.isEmpty) ? '/' : home;
   }
@@ -213,9 +215,7 @@ class SftpService {
     SshHost host,
     String localPath,
     String remoteDir,
-  ) => _startTransfer(host, [
-    'put ${_quote(localPath)} ${_quote(remoteDir)}',
-  ]);
+  ) => _startTransfer(host, ['put ${_quote(localPath)} ${_quote(remoteDir)}']);
 
   /// 递归上传目录到远端目录(落到 remoteDir/<目录名>)。
   /// 先 -mkdir(前缀 - 表示忽略已存在报错)兼容不自建顶层目录的旧服务端。
@@ -246,6 +246,48 @@ class SftpService {
     return null;
   }
 
+  /// 远端目录累计大小(字节),目录上传进度轮询用;拿不到返回 null。
+  /// sftp 没有 du/递归 ls,改走 ssh 复用 ControlMaster 跑 `du -sk`(KB→字节)。
+  static Future<int?> dirSize(SshHost host, String remotePath) async {
+    try {
+      final out = await _sshExec(
+        host,
+        'du -sk ${_quote(remotePath)} 2>/dev/null',
+      );
+      final first = const LineSplitter().convert(out).firstOrNull;
+      if (first == null || first.isEmpty) return null;
+      final kb = int.tryParse(first.split(RegExp(r'\s+')).first);
+      return kb == null ? null : kb * 1024;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 非提权 ssh 单命令执行(复用 ControlMaster),返回 stdout 文本。
+  /// 只用于只读探测(du/stat 之类),失败由调用方兜底。
+  static Future<String> _sshExec(SshHost host, String command) async {
+    final process = await Process.start('/usr/bin/ssh', [
+      '-q',
+      '-o',
+      'ControlMaster=auto',
+      '-o',
+      'ControlPath=~/.termora/cm-%C',
+      '-o',
+      'ControlPersist=10m',
+      '-o',
+      'ServerAliveInterval=30',
+      if (host.port != 22) ...['-p', '${host.port}'],
+      if (host.keyPath.isNotEmpty) ...['-i', host.keyPath],
+      host.target,
+      command,
+    ]);
+    unawaited(process.stdin.close());
+    final out = await process.stdout.transform(utf8.decoder).join();
+    unawaited(process.stderr.drain<void>());
+    await process.exitCode;
+    return out;
+  }
+
   static Future<void> remove(SshHost host, String remotePath) =>
       _run(host, ['rm ${_quote(remotePath)}']);
 
@@ -269,10 +311,14 @@ class SudoFileService {
 
   static List<String> _sshArgs(SshHost host, String remoteCommand) => [
     '-q',
-    '-o', 'ControlMaster=auto',
-    '-o', 'ControlPath=~/.termora/cm-%C',
-    '-o', 'ControlPersist=10m',
-    '-o', 'ServerAliveInterval=30',
+    '-o',
+    'ControlMaster=auto',
+    '-o',
+    'ControlPath=~/.termora/cm-%C',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ServerAliveInterval=30',
     if (host.port != 22) ...['-p', '${host.port}'],
     if (host.keyPath.isNotEmpty) ...['-i', host.keyPath],
     host.target,
@@ -294,7 +340,8 @@ class SudoFileService {
         s.contains('one incorrect password')) {
       return tr('sudo 密码不正确');
     }
-    if (s.contains('you must have a tty') || s.contains('a terminal is required')) {
+    if (s.contains('you must have a tty') ||
+        s.contains('a terminal is required')) {
       return tr('该主机 sudo 需要 tty(requiretty),无法用此方式提权');
     }
     if (s.contains('is not in the sudoers') || s.contains('not allowed')) {
@@ -615,11 +662,16 @@ class SuFileService {
 
   static List<String> _sshTtyArgs(SshHost host, String remoteCommand) => [
     '-tt',
-    '-o', 'LogLevel=QUIET',
-    '-o', 'ControlMaster=auto',
-    '-o', 'ControlPath=~/.termora/cm-%C',
-    '-o', 'ControlPersist=10m',
-    '-o', 'ServerAliveInterval=30',
+    '-o',
+    'LogLevel=QUIET',
+    '-o',
+    'ControlMaster=auto',
+    '-o',
+    'ControlPath=~/.termora/cm-%C',
+    '-o',
+    'ControlPersist=10m',
+    '-o',
+    'ServerAliveInterval=30',
     if (host.port != 22) ...['-p', '${host.port}'],
     if (host.keyPath.isNotEmpty) ...['-i', host.keyPath],
     host.target,
@@ -713,7 +765,8 @@ class SuFileService {
         }
       },
       onError: (Object e) {
-        if (!completer.isCompleted) completer.completeError(SftpException('$e'));
+        if (!completer.isCompleted)
+          completer.completeError(SftpException('$e'));
       },
     );
 
@@ -732,7 +785,11 @@ class SuFileService {
   }
 
   static Future<void> verify(SshHost host, String rootPassword) async {
-    final who = (await _suText(host, rootPassword, 'id -un 2>/dev/null')).trim();
+    final who = (await _suText(
+      host,
+      rootPassword,
+      'id -un 2>/dev/null',
+    )).trim();
     if (!who.contains('root')) {
       throw SftpException(tr('su 提权失败(未取得 root)'));
     }
@@ -778,8 +835,11 @@ class SuFileService {
     String rootPassword,
     String from,
     String to,
-  ) => _suText(host, rootPassword, 'mv -- ${_sq(from)} ${_sq(to)} 2>&1')
-      .then((_) {});
+  ) => _suText(
+    host,
+    rootPassword,
+    'mv -- ${_sq(from)} ${_sq(to)} 2>&1',
+  ).then((_) {});
 
   static Future<void> remove(
     SshHost host,
@@ -792,11 +852,8 @@ class SuFileService {
     '${isDir ? 'rmdir' : 'rm -f'} -- ${_sq(path)} 2>&1',
   ).then((_) {});
 
-  static Future<void> makeDir(
-    SshHost host,
-    String rootPassword,
-    String path,
-  ) => _suText(host, rootPassword, 'mkdir -- ${_sq(path)} 2>&1').then((_) {});
+  static Future<void> makeDir(SshHost host, String rootPassword, String path) =>
+      _suText(host, rootPassword, 'mkdir -- ${_sq(path)} 2>&1').then((_) {});
 
   /// 下载单个文件:root `base64 <file>` → 本地解码写盘
   static Future<SftpTransferHandle> startDownloadFile(
