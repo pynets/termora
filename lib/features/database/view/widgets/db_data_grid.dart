@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,6 +8,7 @@ import 'package:termora/app/theme/app_theme.dart';
 import 'package:termora/core/widgets/glass_menu.dart';
 import 'package:termora/features/database/domain/db_models.dart';
 import 'package:termora/core/l10n/app_l10n.dart';
+import 'package:termora/features/database/view/widgets/cell_detail_dialog.dart';
 
 /// 查询结果网格 — dbeaver 式累积编辑:
 /// 双向滚动、斑马纹、行悬停、列分隔线;编辑写入 [edits] 缓冲(脏格高亮),
@@ -70,10 +74,18 @@ class _DbDataGridState extends State<DbDataGrid> {
   late List<double> _colWidths;
   int? _hoveredRow;
 
-  // 行选择态(多选:点选替换 / Cmd·Ctrl 加选 / Shift 连选)
+  // 行选择态(多选:点选替换 / Cmd·Ctrl 加选 / Shift 连选 / 按住拖动框选)
   final Set<int> _selectedRows = {};
   int? _selectionAnchor;
   final FocusNode _gridFocus = FocusNode();
+
+  // 拖动框选态
+  bool _dragSelecting = false;
+  int? _dragAnchor;
+  Set<int> _preDragSelection = const {};
+  double _lastDragLocalY = 0;
+  Timer? _autoScrollTimer;
+  double _autoScrollDelta = 0;
 
   // 内联编辑态
   int? _editingRow;
@@ -130,6 +142,7 @@ class _DbDataGridState extends State<DbDataGrid> {
 
   @override
   void dispose() {
+    _autoScrollTimer?.cancel();
     _horizontal.dispose();
     _vertical.dispose();
     _editController?.dispose();
@@ -252,6 +265,120 @@ class _DbDataGridState extends State<DbDataGrid> {
     });
   }
 
+  // ── 拖动框选(按住左键拖动跨行选择)──
+
+  /// 纵向局部坐标 → 显示行下标(叠加滚动偏移),越界返回 null
+  int? _rowAtLocalY(double dy) {
+    if (!_vertical.hasClients) return null;
+    final r = ((dy + _vertical.offset) / _rowHeight).floor();
+    if (r < 0 || r >= _totalRows) return null;
+    return r;
+  }
+
+  /// 选中 [_preDragSelection] ∪ [锚点..row] 区间(拖动实时更新)
+  void _applyDragRange(int row) {
+    final anchor = _dragAnchor;
+    if (anchor == null) return;
+    final lo = anchor < row ? anchor : row;
+    final hi = anchor < row ? row : anchor;
+    setState(() {
+      _selectedRows
+        ..clear()
+        ..addAll(_preDragSelection);
+      for (var i = lo; i <= hi; i++) {
+        _selectedRows.add(i);
+      }
+    });
+  }
+
+  void _onSelectPointerDown(PointerDownEvent e) {
+    if (e.buttons != kPrimaryButton) return; // 仅左键起框选(右键留给菜单)
+    final row = _rowAtLocalY(e.localPosition.dy);
+    if (row == null) return;
+    final kb = HardwareKeyboard.instance;
+    final additive = kb.isMetaPressed || kb.isControlPressed;
+    final range = kb.isShiftPressed;
+    _gridFocus.requestFocus();
+    setState(() => _dragSelecting = true); // 立即禁用拖动滚动,避免起手抖动
+
+    if (range && _selectionAnchor != null) {
+      // Shift:从既有锚点连选(拖动继续扩展)
+      _dragAnchor = _selectionAnchor;
+      _preDragSelection = const {};
+      _applyDragRange(row);
+    } else if (additive) {
+      // Cmd/Ctrl:切换该行(可取消选中);拖动则在现有选区上叠加范围
+      setState(() {
+        if (!_selectedRows.remove(row)) _selectedRows.add(row);
+      });
+      _selectionAnchor = row;
+      _dragAnchor = row;
+      _preDragSelection = Set.of(_selectedRows);
+    } else {
+      // 普通:以本行为新锚点,替换选区(拖动扩展成范围)
+      _selectionAnchor = row;
+      _dragAnchor = row;
+      _preDragSelection = const {};
+      setState(() {
+        _selectedRows
+          ..clear()
+          ..add(row);
+      });
+    }
+  }
+
+  void _onSelectPointerMove(PointerMoveEvent e) {
+    if (!_dragSelecting) return;
+    _lastDragLocalY = e.localPosition.dy;
+    final row = _rowAtLocalY(e.localPosition.dy);
+    if (row != null) _applyDragRange(row);
+    _maybeAutoScroll(e.localPosition.dy);
+  }
+
+  void _endDrag([PointerEvent? _]) {
+    _stopAutoScroll();
+    if (_dragSelecting) setState(() => _dragSelecting = false);
+  }
+
+  /// 拖到视口上/下边缘时自动滚动并持续扩选
+  void _maybeAutoScroll(double localY) {
+    if (!_vertical.hasClients) return;
+    const edge = 26.0;
+    const step = 14.0;
+    final vh = _vertical.position.viewportDimension;
+    double delta = 0;
+    if (localY < edge) {
+      delta = -step;
+    } else if (localY > vh - edge) {
+      delta = step;
+    }
+    _autoScrollDelta = delta;
+    if (delta == 0) {
+      _stopAutoScroll();
+      return;
+    }
+    _autoScrollTimer ??= Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_dragSelecting || !_vertical.hasClients) {
+        _stopAutoScroll();
+        return;
+      }
+      final target = (_vertical.offset + _autoScrollDelta).clamp(
+        0.0,
+        _vertical.position.maxScrollExtent,
+      );
+      if (target == _vertical.offset) return; // 到顶/底
+      _vertical.jumpTo(target);
+      final row = _rowAtLocalY(_lastDragLocalY);
+      if (row != null) _applyDragRange(row);
+    });
+  }
+
+  void _stopAutoScroll() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
+    _autoScrollDelta = 0;
+  }
+
   /// 选中行拼成文本:tsv=Tab 分隔(粘进表格更稳),否则 CSV(RFC4180 转义)
   String _selectedText({required bool tsv}) {
     final indices = _selectedRows.toList()..sort();
@@ -336,6 +463,31 @@ class _DbDataGridState extends State<DbDataGrid> {
         extentOffset: _editController?.text.length ?? 0,
       );
     });
+  }
+
+  /// 大内容弹窗:舒展查看长文本/JSON,可编辑时改写保存或设为 NULL
+  Future<void> _openCellDetail(int r, int c, Object? value) async {
+    final canEdit =
+        widget.editable && widget.onCellEdit != null && !_isRemoved(r);
+    final editText = switch (value) {
+      DbEditSession.unsetValue => '',
+      null => '',
+      DateTime dt => dt.toIso8601String(),
+      _ => value.toString(),
+    };
+    final result = await showCellDetailDialog(
+      context,
+      column: widget.output.columns[c],
+      value: editText,
+      editable: canEdit,
+      isNull: value == null,
+    );
+    if (result == null || !mounted || !canEdit) return;
+    if (result.setNull) {
+      widget.onCellEdit?.call(r, c, null, true);
+    } else if (result.value != editText) {
+      widget.onCellEdit?.call(r, c, result.value, false);
+    }
   }
 
   void _cancelEdit() {
@@ -452,13 +604,24 @@ class _DbDataGridState extends State<DbDataGrid> {
                   children: [
                     _buildHeader(),
                     Expanded(
-                      child: Scrollbar(
-                        controller: _vertical,
-                        child: ListView.builder(
+                      child: Listener(
+                        onPointerDown: _onSelectPointerDown,
+                        onPointerMove: _onSelectPointerMove,
+                        onPointerUp: _endDrag,
+                        onPointerCancel: _endDrag,
+                        child: Scrollbar(
                           controller: _vertical,
-                          itemExtent: _rowHeight,
-                          itemCount: _totalRows,
-                          itemBuilder: (context, r) => _buildRow(r),
+                          child: ListView.builder(
+                            controller: _vertical,
+                            // 拖动框选期间禁用拖动滚动(改由边缘自动滚动驱动);
+                            // 非拖动时正常,滚轮/触控板/滚动条照常。
+                            physics: _dragSelecting
+                                ? const NeverScrollableScrollPhysics()
+                                : null,
+                            itemExtent: _rowHeight,
+                            itemCount: _totalRows,
+                            itemBuilder: (context, r) => _buildRow(r),
+                          ),
                         ),
                       ),
                     ),
@@ -624,10 +787,9 @@ class _DbDataGridState extends State<DbDataGrid> {
     final added = _isAddedRow(r);
     final selected = _selectedRows.contains(r);
     return [
-      // 行号槽 + 删除/恢复按钮(点空白处选中整行)
+      // 行号槽 + 删除/恢复按钮(选中走 Listener 的按下/拖动;右键行菜单)
       GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => _selectRow(r),
         onSecondaryTapDown: (details) =>
             _showRowMenu(details.globalPosition, r),
         child: SizedBox(
@@ -694,9 +856,11 @@ class _DbDataGridState extends State<DbDataGrid> {
     final bg = edited ? AppTheme.warningColor.withValues(alpha: 0.22) : null;
 
     return GestureDetector(
-      // 单击选中整行;双击进入编辑;右键菜单复制
-      onTap: () => _selectRow(r),
-      onDoubleTap: widget.editable ? () => _startEdit(r, c) : null,
+      // 选中走 Listener 的按下/拖动;双击:可编辑→内联编辑,只读→详情弹窗;
+      // 右键菜单复制/查看
+      onDoubleTap: widget.editable
+          ? () => _startEdit(r, c)
+          : () => _openCellDetail(r, c, value),
       onSecondaryTapDown: (details) =>
           _showCellMenu(details.globalPosition, r, c, value),
       child: Container(
@@ -758,6 +922,7 @@ class _DbDataGridState extends State<DbDataGrid> {
       context: context,
       position: position,
       items: [
+        _menuItem('detail', widget.editable ? tr('查看/编辑内容…') : tr('查看内容…')),
         _menuItem('copy', tr('复制值')),
         _menuItem('copy_row', tr('复制整行(CSV)')),
         if (multi) ...[
@@ -779,6 +944,8 @@ class _DbDataGridState extends State<DbDataGrid> {
     ).then((action) {
       if (action == null || !mounted) return;
       switch (action) {
+        case 'detail':
+          _openCellDetail(r, c, value);
         case 'copy':
           Clipboard.setData(ClipboardData(text: value?.toString() ?? ''));
         case 'copy_row':

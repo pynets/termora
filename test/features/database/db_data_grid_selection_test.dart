@@ -60,6 +60,7 @@ void main() {
     await tester.pump();
     await ctrl(tester, LogicalKeyboardKey.keyC);
 
+    await tester.pump(const Duration(milliseconds: 350)); // 清掉双击识别器计时器
     expect(clip, isNotEmpty);
     expect(clip.last, '2\tbob');
   });
@@ -74,6 +75,7 @@ void main() {
     await ctrl(tester, LogicalKeyboardKey.keyA);
     await ctrl(tester, LogicalKeyboardKey.keyC);
 
+    await tester.pump(const Duration(milliseconds: 350)); // 清掉双击识别器计时器
     expect(clip.last, '1\talice\n2\tbob\n3\tcarol');
   });
 
@@ -89,6 +91,7 @@ void main() {
     await tester.pump();
     await ctrl(tester, LogicalKeyboardKey.keyC);
 
+    await tester.pump(const Duration(milliseconds: 350)); // 清掉双击识别器计时器
     expect(clip.last, '1\talice\n2\tbob\n3\tcarol');
   });
 
@@ -104,6 +107,7 @@ void main() {
     await tester.pump();
     await ctrl(tester, LogicalKeyboardKey.keyC);
 
+    await tester.pump(const Duration(milliseconds: 350)); // 清掉双击识别器计时器
     expect(clip.last, '1\talice\n3\tcarol');
   });
 
@@ -137,6 +141,43 @@ void main() {
     // 网格不应把它当「复制整行」写剪贴板(文本框自己的复制走系统通道,
     // 空选区时也不会写);更不能出现整行 TSV
     expect(clip.where((t) => t.contains('\t')), isEmpty);
+  });
+
+  testWidgets('按住拖动框选:从第 1 行拖到第 3 行选中全部', (tester) async {
+    final clip = mockClipboard(tester);
+    await pumpGrid(tester);
+
+    // 在第 1 行按下,拖到第 3 行,松开 → 选中 1..3
+    final g = await tester.startGesture(
+      tester.getCenter(find.text('alice')),
+    );
+    await tester.pump();
+    await g.moveTo(tester.getCenter(find.text('bob')));
+    await tester.pump();
+    await g.moveTo(tester.getCenter(find.text('carol')));
+    await tester.pump();
+    await g.up();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    await ctrl(tester, LogicalKeyboardKey.keyC);
+    expect(clip.last, '1\talice\n2\tbob\n3\tcarol');
+  });
+
+  testWidgets('反向拖动(从下往上)同样选中区间', (tester) async {
+    final clip = mockClipboard(tester);
+    await pumpGrid(tester);
+
+    final g = await tester.startGesture(
+      tester.getCenter(find.text('carol')),
+    );
+    await tester.pump();
+    await g.moveTo(tester.getCenter(find.text('alice')));
+    await tester.pump();
+    await g.up();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    await ctrl(tester, LogicalKeyboardKey.keyC);
+    expect(clip.last, '1\talice\n2\tbob\n3\tcarol');
   });
 
   testWidgets('无选择时 Ctrl+C 不写剪贴板', (tester) async {

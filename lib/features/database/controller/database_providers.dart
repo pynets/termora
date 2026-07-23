@@ -351,7 +351,55 @@ class DbSessionController extends Notifier<DbSessionsState> {
     return DbSessionsState();
   }
 
-  DbConnection? _connFor(String? id) => id != null ? _conns[id] : null;
+  /// 判断是否为「连接已断」类错误 —— 这类错误意味着查询根本没发到服务器,
+  /// 因此重连后重试是安全的(不会重复执行已提交的语句)。
+  static bool _isConnectionDown(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('connection is not open') ||
+        s.contains('connection is closed') ||
+        s.contains('connection closed') ||
+        s.contains('connection is already closed') ||
+        s.contains('socket has been closed');
+  }
+
+  /// 用会话配置就地重连,替换缓存连接。失败返回 null(保持原状)。
+  Future<DbConnection?> _reopen(String id) async {
+    final config = state.sessionFor(id).config;
+    if (config == null) return null;
+    final old = _conns[id];
+    try {
+      final fresh = await DbService.open(config);
+      _conns[id] = fresh;
+      if (old != null && !identical(old, fresh)) {
+        try {
+          await old.close();
+        } catch (_) {}
+      }
+      return fresh;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 在连接上执行一次数据库操作,自愈断连:
+  /// ① 用前自检 [DbConnection.isOpen],已断则先重连(断网/休眠后 socket 死掉);
+  /// ② 万一执行时才发现连接未打开(查询没发出),重连后再安全重试一次。
+  /// 无可用连接或重连失败则抛 StateError,由调用方按错误渲染。
+  Future<T> _exec<T>(String id, Future<T> Function(DbConnection conn) op) async {
+    var conn = _conns[id];
+    if (conn == null) throw StateError(tr('连接不可用'));
+    if (!conn.isOpen) {
+      conn = await _reopen(id) ?? (throw StateError(tr('连接已断开,自动重连失败')));
+    }
+    try {
+      return await op(conn);
+    } catch (e) {
+      if (!_isConnectionDown(e)) rethrow;
+      final fresh = await _reopen(id);
+      if (fresh == null) throw StateError(tr('连接已断开,自动重连失败'));
+      return await op(fresh);
+    }
+  }
 
   void _updateSession(
     String id,
@@ -483,8 +531,7 @@ class DbSessionController extends Notifier<DbSessionsState> {
   }) async {
     final targetId = connectionId ?? state.activeId;
     if (targetId == null) return;
-    final conn = _connFor(targetId);
-    if (conn == null) return;
+    if (_conns[targetId] == null) return;
     final session = state.sessionFor(targetId);
     if (!force && session.tables.containsKey(schema)) return;
     if (session.loadingSchemas.contains(schema)) return;
@@ -495,7 +542,10 @@ class DbSessionController extends Notifier<DbSessionsState> {
       (s) => s.copyWith(loadingSchemas: {...s.loadingSchemas, schema}),
     );
     try {
-      final tables = await DbService.listTables(conn, schema);
+      final tables = await _exec(
+        targetId,
+        (conn) => DbService.listTables(conn, schema),
+      );
       if (generation != _generations[targetId]) return;
       _updateSession(
         targetId,
@@ -663,24 +713,26 @@ class DbSessionController extends Notifier<DbSessionsState> {
   }
 
   Future<void> _loadTab(String id, int index) async {
-    final conn = _connFor(id);
     final tab = _tabAt(id, index);
-    if (conn == null || tab == null) return;
+    if (_conns[id] == null || tab == null) return;
     final key = tab.qualifiedName;
 
     final generation = _generations[id];
     _replaceTab(id, key, (t) => t.copyWith(loading: true, clearError: true));
 
     try {
-      final (output, hasMore, editContext) = await DbService.fetchTableData(
-        conn,
-        tab.schema,
-        tab.table,
-        page: tab.page,
-        orderBy: tab.sortColumn,
-        ascending: tab.sortAscending,
-        filter: tab.filter,
-        columnFilters: tab.columnFilters,
+      final (output, hasMore, editContext) = await _exec(
+        id,
+        (conn) => DbService.fetchTableData(
+          conn,
+          tab.schema,
+          tab.table,
+          page: tab.page,
+          orderBy: tab.sortColumn,
+          ascending: tab.sortAscending,
+          filter: tab.filter,
+          columnFilters: tab.columnFilters,
+        ),
       );
       if (generation != _generations[id]) return;
       _replaceTab(
@@ -705,18 +757,20 @@ class DbSessionController extends Notifier<DbSessionsState> {
   }
 
   Future<void> _refreshCount(String id, int index) async {
-    final conn = _connFor(id);
     final tab = _tabAt(id, index);
-    if (conn == null || tab == null) return;
+    if (_conns[id] == null || tab == null) return;
     final key = tab.qualifiedName;
     final generation = _generations[id];
     try {
-      final total = await DbService.countRows(
-        conn,
-        tab.schema,
-        tab.table,
-        filter: tab.filter,
-        columnFilters: tab.columnFilters,
+      final total = await _exec(
+        id,
+        (conn) => DbService.countRows(
+          conn,
+          tab.schema,
+          tab.table,
+          filter: tab.filter,
+          columnFilters: tab.columnFilters,
+        ),
       );
       if (generation != _generations[id]) return;
       _replaceTab(id, key, (t) => t.copyWith(totalRows: total));
@@ -786,19 +840,17 @@ class DbSessionController extends Notifier<DbSessionsState> {
     int index, {
     bool force = false,
   }) async {
-    final conn = _connFor(id);
     final tab = _tabAt(id, index);
-    if (conn == null || tab == null) return;
+    if (_conns[id] == null || tab == null) return;
     if (!force && (tab.structure != null || tab.structureLoading)) return;
     final key = tab.qualifiedName;
 
     final generation = _generations[id];
     _replaceTab(id, key, (t) => t.copyWith(structureLoading: true));
     try {
-      final structure = await DbService.fetchTableStructure(
-        conn,
-        tab.schema,
-        tab.table,
+      final structure = await _exec(
+        id,
+        (conn) => DbService.fetchTableStructure(conn, tab.schema, tab.table),
       );
       if (generation != _generations[id]) return;
       _replaceTab(
@@ -994,9 +1046,8 @@ class DbSessionController extends Notifier<DbSessionsState> {
   Future<String?> saveTab(int tabIndex) async {
     final id = state.activeId;
     if (id == null) return tr('未连接数据库');
-    final conn = _connFor(id);
     final tab = _tabAt(id, tabIndex);
-    if (conn == null || tab == null) return tr('连接不可用');
+    if (_conns[id] == null || tab == null) return tr('连接不可用');
     final output = tab.output;
     final context = tab.editContext;
     if (output == null || context == null || !context.editable) {
@@ -1006,11 +1057,14 @@ class DbSessionController extends Notifier<DbSessionsState> {
 
     _replaceTab(id, tab.qualifiedName, (t) => t.copyWith(saving: true));
     try {
-      await DbService.applyChanges(
-        conn,
-        context: context,
-        output: output,
-        session: tab.edits,
+      await _exec(
+        id,
+        (conn) => DbService.applyChanges(
+          conn,
+          context: context,
+          output: output,
+          session: tab.edits,
+        ),
       );
       _replaceTab(
         id,
@@ -1029,11 +1083,10 @@ class DbSessionController extends Notifier<DbSessionsState> {
   Future<String?> saveSql() async {
     final id = state.activeId;
     if (id == null) return tr('未连接数据库');
-    final conn = _connFor(id);
     final session = state.activeSession;
     final output = session.sql.output;
     final context = session.sql.editContext;
-    if (conn == null) return tr('连接不可用');
+    if (_conns[id] == null) return tr('连接不可用');
     if (output == null || context == null || !context.editable) {
       return tr('该查询结果没有完整主键,无法保存');
     }
@@ -1041,11 +1094,14 @@ class DbSessionController extends Notifier<DbSessionsState> {
 
     _updateSession(id, (s) => s.copyWith(sql: s.sql.copyWith(saving: true)));
     try {
-      await DbService.applyChanges(
-        conn,
-        context: context,
-        output: output,
-        session: session.sql.edits,
+      await _exec(
+        id,
+        (conn) => DbService.applyChanges(
+          conn,
+          context: context,
+          output: output,
+          session: session.sql.edits,
+        ),
       );
       _updateSession(
         id,
@@ -1073,10 +1129,9 @@ class DbSessionController extends Notifier<DbSessionsState> {
   Future<void> runSql(String sql) async {
     final id = state.activeId;
     if (id == null) return;
-    final conn = _connFor(id);
     final trimmed = sql.trim();
     final session = state.sessionFor(id);
-    if (conn == null || trimmed.isEmpty || session.sql.running) return;
+    if (_conns[id] == null || trimmed.isEmpty || session.sql.running) return;
 
     ref.read(dbSqlHistoryProvider.notifier).add(trimmed);
 
@@ -1089,7 +1144,10 @@ class DbSessionController extends Notifier<DbSessionsState> {
     );
 
     try {
-      final (output, editContext) = await DbService.runSql(conn, trimmed);
+      final (output, editContext) = await _exec(
+        id,
+        (conn) => DbService.runSql(conn, trimmed),
+      );
       if (generation != _generations[id]) return;
       _updateSession(
         id,

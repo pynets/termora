@@ -11,6 +11,10 @@ import 'package:termora/core/l10n/app_l10n.dart';
 sealed class DbConnection {
   DbEngine get engine;
   Future<void> close();
+
+  /// 连接是否仍可用。用于会话层用前自检:断网/休眠后底层 socket 可能已死,
+  /// 此时应重连而不是拿着死连接 execute(报 "connection is not open")。
+  bool get isOpen;
 }
 
 class PgConnection extends DbConnection {
@@ -18,6 +22,8 @@ class PgConnection extends DbConnection {
   final Connection raw;
   @override
   DbEngine get engine => DbEngine.postgres;
+  @override
+  bool get isOpen => raw.isOpen;
   @override
   Future<void> close() => raw.close();
 }
@@ -28,6 +34,8 @@ class ChConnection extends DbConnection {
   @override
   DbEngine get engine => DbEngine.clickhouse;
   @override
+  bool get isOpen => true; // 无长连接:每次请求独立 HTTP,不存在"断开"
+  @override
   Future<void> close() async {} // HTTP 无长连接
 }
 
@@ -36,6 +44,8 @@ class SqliteConnection extends DbConnection {
   final sqlite.Database raw;
   @override
   DbEngine get engine => DbEngine.sqlite;
+  @override
+  bool get isOpen => true; // 本地文件句柄:不会因网络断开,close 由会话层管
   @override
   Future<void> close() async => raw.close();
 }

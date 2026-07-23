@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:postgres/postgres.dart';
@@ -154,10 +155,11 @@ class PostgresService {
     final hasMore = result.length > pageSize;
     final rows = hasMore ? result.sublist(0, pageSize) : result;
     final editContext = await resolveEditContext(conn, result);
+    final typeOids = [for (final c in result.schema.columns) c.typeOid];
     return (
       DbQueryOutput(
         columns: _columnNames(result),
-        rows: [for (final row in rows) _normalizeRow(row)],
+        rows: [for (final row in rows) _normalizeRow(row, typeOids)],
         affectedRows: rows.length,
         elapsed: watch.elapsed,
       ),
@@ -397,7 +399,10 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
     if (result.affectedRows != 1) {
       throw StateError(tr2('更新影响了 {0} 行(预期 1 行),已回读刷新', [result.affectedRows]));
     }
-    return _normalizeValue(result.first.first);
+    final oid = result.schema.columns.isNotEmpty
+        ? result.schema.columns.first.typeOid
+        : 0;
+    return _normalizeValue(result.first.first, oid);
   }
 
   /// 批量提交累积编辑(dbeaver 式)— 全部包在一个事务里,任一失败整体回滚。
@@ -554,12 +559,15 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
       }
     }
 
+    final typeOids = lastWithRows == null
+        ? const <int>[]
+        : [for (final c in lastWithRows.schema.columns) c.typeOid];
     return (
       DbQueryOutput(
         columns: lastWithRows == null ? const [] : _columnNames(lastWithRows),
         rows: [
           if (lastWithRows != null)
-            for (final row in lastWithRows) _normalizeRow(row),
+            for (final row in lastWithRows) _normalizeRow(row, typeOids),
         ],
         affectedRows: totalAffected,
         elapsed: watch.elapsed,
@@ -675,11 +683,30 @@ WHERE n.nspname = @schema AND c.relname = @table'''),
 
   /// 归一化一行的值:把 postgres 未解码的 [UndecodedBytes](如 binary 的 uuid)
   /// 转成可读值,避免网格里显示 "Instance of 'UndecodedBytes'"。
-  static List<Object?> _normalizeRow(Iterable<Object?> row) => [
-    for (final v in row) _normalizeValue(v),
-  ];
+  /// [typeOids] 为各列的类型 OID(用于 json/jsonb 的规范化)。
+  static List<Object?> _normalizeRow(Iterable<Object?> row, List<int> typeOids) {
+    final list = row is List<Object?> ? row : row.toList();
+    return [
+      for (var i = 0; i < list.length; i++)
+        _normalizeValue(list[i], i < typeOids.length ? typeOids[i] : 0),
+    ];
+  }
 
-  static Object? _normalizeValue(Object? value) {
+  /// json / jsonb 的类型 OID
+  static const _jsonOid = 114;
+  static const _jsonbOid = 3802;
+
+  static Object? _normalizeValue(Object? value, [int typeOid = 0]) {
+    // json/jsonb:驱动已解成 Dart 对象(Map/List/标量),但 Dart 的 toString
+    // 是 `{a: 1}` 这种非法 JSON —— 网格显示难看,编辑存回 CAST(... AS jsonb)
+    // 会被拒。回编成规范 JSON 文本,显示好看且可原样保存。
+    if (value != null && (typeOid == _jsonOid || typeOid == _jsonbOid)) {
+      try {
+        return jsonEncode(value);
+      } catch (_) {
+        // 非常规内容(理论不会发生):落到通用分支
+      }
+    }
     // 驱动特有类型 → pg 文本输入格式(toString 是 "Time(…)" 这类包装,
     // 直接进网格难看、进 INSERT 会报 invalid input syntax)
     if (value is Time) return _formatTime(value);
